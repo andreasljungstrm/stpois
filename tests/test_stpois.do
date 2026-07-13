@@ -11,6 +11,14 @@ stpois age posttran, nolog
 assert e(converged) == 1
 di "PASS: N=" e(N) " ll=" e(ll)
 
+// Must match streg, distribution(exponential) on coefs and SEs
+local b_age_p  = _b[age]
+local se_age_p = _se[age]
+qui streg age posttran, distribution(exponential) nohr nolog
+assert abs(`b_age_p'  - _b[age])  < 1e-6
+assert abs(`se_age_p' - _se[age]) < 1e-6
+di "PASS: matches streg, dist(exponential)"
+
 // ── 2. HDFE acid test ──────────────────────────────────────────────────────
 // stpois age posttran, absorb(surgery) must match
 // poisson _d age posttran i.surgery, exposure(ptime) on coefs AND SEs
@@ -85,6 +93,16 @@ di "PASS: N=" e(N) " N_cells=" e(N_cells) " ll=" e(ll)
 assert e(N_cells) < e(N)
 assert e(N_cells) >= 100   // most of 200 possible cells should have data
 assert e(converged) == 1
+
+// Murphy–Topel: corrected SEs must equal the full joint-model SEs
+qui poisson _d age income i.edu i.region i.period if _st, exposure(`expv2') nolog
+local se_edu3_mt = _se[3.edu]
+local se_cons_mt = _se[_cons]
+stpois age income i.edu i.region i.period, fast(offset) mtopel nolog
+assert e(mtopel) == 1
+assert abs(_se[3.edu] - `se_edu3_mt') < 1e-6
+assert abs(_se[_cons] - `se_cons_mt') < 1e-6
+di "PASS: fast(offset) mtopel SEs equal full joint-model SEs"
 
 // ── 5. fast(moments): exact MLE acid test ──────────────────────────────────
 di _n "=== 5. fast(moments) ==="

@@ -41,6 +41,8 @@
 {syntab:Fast estimation on collapsed cells}
 {synopt:{opt fast(method)}}{it:method} is {opt offset} or {opt moments};
     see {help stpois##fast:Fast estimation}{p_end}
+{synopt:{opt mt:opel}}with {cmd:fast(offset)}: Murphy–Topel-corrected SEs
+    that propagate first-stage uncertainty{p_end}
 
 {syntab:High-dimensional fixed effects}
 {synopt:{opth absorb(varlist)}}absorb fixed effects via IRLS demeaning;
@@ -214,13 +216,22 @@ with a note): the estimator is exact, so no higher-order correction is
 needed.
 
 {pstd}
-{bf:APPROXIMATION WARNINGS} ({cmd:fast(offset)} only)
+{bf:Standard errors under fast(offset)}
 
 {phang2}
-• {cmd:fast(offset)} standard errors {bf:do not} account for first-stage
-  estimation uncertainty; they are conditional on the stage-1 estimates
-  of the continuous coefficients. The constant is most affected;
+• By default, {cmd:fast(offset)} standard errors are conditional on the
+  stage-1 estimates of the continuous coefficients and do not account
+  for first-stage estimation uncertainty. The constant is most affected;
   cell-contrast SEs much less so.
+
+{phang2}
+• {opt mtopel} requests Murphy–Topel-corrected standard errors
+  (Murphy and Topel 1985). Because stage 1 estimates the full model
+  (continuous and categorical terms jointly), the corrected covariance
+  of the second-stage parameters reduces to the corresponding block of
+  the stage-1 joint VCE, which {cmd:stpois} extracts exactly: with
+  {opt mtopel}, {cmd:fast(offset)} SEs equal the full joint-model SEs
+  to numerical precision.
 
 {phang2}
 • {cmd:fast(moments)} carries no such caveat — it is exact — and is the
@@ -364,6 +375,10 @@ the full likelihood (e.g., {helpb lrtest}) are less meaningful.
 
 {marker references}{...}
 {title:References}
+
+{phang}
+Murphy, K. M., and R. H. Topel. 1985. Estimation and inference in two-step
+econometric models. {it:Journal of Business & Economic Statistics} 3: 88–97.
 
 {phang}
 Correia, S., P. Guimarães, and T. Zylkin. 2020.

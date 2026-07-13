@@ -18,6 +18,7 @@ program _stpois_fast_offset, eclass
         vce(string)                       ///
         robust                            ///
         cluster(varname)                  ///
+        MTopel                            ///
         *]
 
     // ── Parse varlist: categorical (i.) vs continuous (bare) ───────────────
@@ -70,14 +71,29 @@ program _stpois_fast_offset, eclass
     local N_orig = r(N)
 
     // ── Stage 1: estimate continuous effects on individual data ────────────
-    // Include categorical indicators to avoid OVB from correlation
+    // Include categorical indicators to avoid OVB from correlation.
+    // With mtopel, run stage 1 under the requested VCE so its joint
+    // covariance matrix can supply the corrected second-stage VCE block.
     if "`nolog'" == "" di as txt "  (fast offset) Stage 1: individual-level Poisson..."
+    local s1_vceopts
+    if "`mtopel'" != "" local s1_vceopts `vceopts'
     qui poisson _d `cont_vars' `cat_terms' if `touse', ///
-        exposure(`exposure') nolog `options'
+        exposure(`exposure') nolog `s1_vceopts' `options'
 
-    // Extract continuous-covariate coefficients
-    tempname b_stage1
+    // Extract continuous-covariate coefficients (and, for mtopel, the
+    // full joint VCE)
+    tempname b_stage1 V_stage1
     matrix `b_stage1' = e(b)
+    if "`mtopel'" != "" {
+        matrix `V_stage1' = e(V)
+        local ncols1 = colsof(`V_stage1')
+        local blankeq1
+        forvalues i = 1/`ncols1' {
+            local blankeq1 `blankeq1' ""
+        }
+        matrix coleq `V_stage1' = `blankeq1'
+        matrix roweq `V_stage1' = `blankeq1'
+    }
     local nc : word count `cont_vars'
     // Coefficients for cont_vars are the first nc columns of b
     // (continuous vars were listed first in the stage-1 model)
@@ -133,6 +149,42 @@ program _stpois_fast_offset, eclass
     matrix coleq `V' = `blankeq'
     matrix roweq `V' = `blankeq'
 
+    // ── Murphy–Topel correction ────────────────────────────────────────────
+    // Stage 1 estimates the full model (continuous + categorical) jointly,
+    // so the MT-corrected covariance of the second-stage parameters reduces
+    // to the corresponding block of the stage-1 joint VCE. Extract it by name.
+    if "`mtopel'" != "" {
+        // Overwrite V element-wise from the stage-1 joint VCE, matching
+        // parameters by name; the stripe of V (incl. omit flags) is untouched.
+        local s2names : colnames `b'
+        local n2 : word count `s2names'
+        local ok 1
+        forvalues i = 1/`n2' {
+            local ni : word `i' of `s2names'
+            local pi = colnumb(`V_stage1', "`ni'")
+            if `pi' >= . {
+                local ok 0
+                continue, break
+            }
+            forvalues j = `i'/`n2' {
+                local nj : word `j' of `s2names'
+                local pj = colnumb(`V_stage1', "`nj'")
+                if `pj' >= . {
+                    local ok 0
+                    continue, break
+                }
+                matrix `V'[`i', `j'] = `V_stage1'[`pi', `pj']
+                matrix `V'[`j', `i'] = `V_stage1'[`pj', `pi']
+            }
+            if !`ok' continue, break
+        }
+        if !`ok' {
+            di as txt "  (mtopel: could not match stage-1 and stage-2 parameter names; " ///
+                      "conditional SEs reported)"
+            local mtopel
+        }
+    }
+
     restore
 
     // ── Post (using original touse for esample) ────────────────────────────
@@ -146,6 +198,7 @@ program _stpois_fast_offset, eclass
     ereturn scalar rank      = `rank'
     ereturn scalar converged = `conv'
     ereturn scalar N_cells   = `N_cells'
+    ereturn scalar mtopel    = ("`mtopel'" != "")
     ereturn local  vce       "`vce_r'"
     ereturn local  cont_vars "`cont_vars'"
     ereturn local  cat_vars  "`cat_vars_raw'"

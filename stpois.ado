@@ -1,4 +1,4 @@
-*! version 0.4.0  13jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.5.0  13jul2026  Andreas Ljungström, SOFI Stockholm University
 *! Poisson event-history regression for stset data
 program stpois, eclass properties(st)
     version 14
@@ -21,6 +21,7 @@ program stpois, eclass properties(st)
         CLuster(varname)                      ///
         ABSorb(varlist)                       ///
         FAST(string)                          ///
+        MTopel                                ///
         TOLerance(real 1e-8)                  ///
         MAXIter(integer 100)                  ///
         *                                     ///
@@ -39,6 +40,10 @@ program stpois, eclass properties(st)
             di as error "fast() requires {bf:offset} or {bf:moments}"
             exit 198
         }
+    }
+    if "`mtopel'" != "" & `"`fast'"' != "offset" {
+        di as error "mtopel may only be specified with fast(offset)"
+        exit 198
     }
 
     // Build sample
@@ -105,8 +110,14 @@ program stpois, eclass properties(st)
         _stpois_fast_offset `varlist' `wgtexpr', ///
             touse(`touse')                         ///
             exposure(`exposure')                   ///
+            `mtopel'                               ///
             `poisopts' `options'
-        local etitle "Poisson EHA — fast: two-stage offset (APPROX)"
+        if "`mtopel'" != "" {
+            local etitle "Poisson EHA — fast: two-stage offset (Murphy–Topel SEs)"
+        }
+        else {
+            local etitle "Poisson EHA — fast: two-stage offset (conditional SEs)"
+        }
         ereturn local fast "offset"
     }
     else if `"`fast'"' == "moments" {
@@ -189,8 +200,14 @@ program Display
     di _n as txt `"`e(title)'"'
 
     if `"`e(fast)'"' == "offset" {
-        di as txt "  (Note: SEs are conditional on first-stage estimates; " ///
-                  "first-stage uncertainty not propagated)"
+        if e(mtopel) == 1 {
+            di as txt "  (Note: SEs are Murphy–Topel corrected; " ///
+                      "first-stage uncertainty propagated)"
+        }
+        else {
+            di as txt "  (Note: SEs are conditional on first-stage estimates; " ///
+                      "specify mtopel to propagate first-stage uncertainty)"
+        }
     }
 
     di _n                                                                    ///

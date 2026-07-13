@@ -1,4 +1,4 @@
-*! _stpois_hdfe  version 0.3.0  13jul2026
+*! _stpois_hdfe  version 0.5.0  13jul2026
 *! IRLS Poisson with alternating-projections FE absorption (ppmlhdfe-style)
 *! Called by stpois when absorb() is specified. Not intended for direct use.
 program _stpois_hdfe, eclass
@@ -80,8 +80,10 @@ program _stpois_hdfe, eclass
     // --- Count clusters if needed --------------------------------------------
     local n_clust 0
     if "`ctype'" == "cluster" {
-        qui levelsof `clusterv' if `touse2', local(_clvls)
-        local n_clust : word count `_clvls'
+        // count clusters in Mata; levelsof overflows the macro buffer
+        // with very many levels
+        mata: st_local("n_clust", ///
+            strofreal(rows(uniqrows(st_data(., "`clusterv'", "`touse2'")))))
     }
 
     // --- Run Mata IRLS -------------------------------------------------------
@@ -169,28 +171,33 @@ end
 // ============================================================================
 mata:
 
-// Weighted within-group demeaning; no sort required
+// Weighted within-group demeaning using a precomputed sort permutation
+// and panel boundaries: one O(n) pass per call, independent of the
+// number of group levels.
 real colvector _wdemean(real colvector v,
                         real colvector w,
-                        real colvector g)
+                        real colvector perm,
+                        real matrix    info)
 {
-    real colvector result, uvals
-    real scalar    i, ni, wsum, wmean
-    real vector    sel
+    real colvector vp, wp, res, out
+    real scalar    i, r1, r2, wsum
 
-    result = v
-    uvals  = uniqrows(g)
-    ni     = rows(uvals)
+    vp  = v[perm]
+    wp  = w[perm]
+    res = vp
 
-    for (i = 1; i <= ni; i++) {
-        sel  = selectindex(g :== uvals[i, 1])
-        wsum = quadsum(w[sel])
+    for (i = 1; i <= rows(info); i++) {
+        r1   = info[i, 1]
+        r2   = info[i, 2]
+        wsum = quadsum(wp[|r1 \ r2|])
         if (wsum > 0) {
-            wmean       = quadsum(w[sel] :* v[sel]) / wsum
-            result[sel] = v[sel] :- wmean
+            res[|r1 \ r2|] = vp[|r1 \ r2|] :-
+                (quadsum(wp[|r1 \ r2|] :* vp[|r1 \ r2|]) / wsum)
         }
     }
-    return(result)
+    out       = v
+    out[perm] = res
+    return(out)
 }
 
 
@@ -216,7 +223,8 @@ void _stpois_hdfe_irls(
     real colvector y, E
     string rowvector xnames, fenames
     real scalar    p, nfe, n
-    real matrix    X, G
+    real matrix    X, G, P
+    pointer(real matrix) rowvector infos
     real scalar    sum_y, sum_E
     real colvector eta, b_old, b_new
     real colvector mu, z, w, z_tilde, res, res_tilde, FE_c, z_prev, r_prev
@@ -239,6 +247,15 @@ void _stpois_hdfe_irls(
 
     X = st_data(idx, xnames)
     G = st_data(idx, fenames)
+
+    // Precompute, per FE, the sort permutation and panel boundaries once;
+    // every demeaning pass is then O(n) regardless of the level count
+    P     = J(n, nfe, .)
+    infos = J(1, nfe, NULL)
+    for (k = 1; k <= nfe; k++) {
+        P[., k]  = order(G[., k], 1)
+        infos[k] = &panelsetup(G[P[., k], k], 1)
+    }
 
     // --- Initialize ----------------------------------------------------------
     sum_y = quadsum(y)
@@ -263,9 +280,9 @@ void _stpois_hdfe_irls(
         for (inner = 1; inner <= 200; inner++) {
             z_prev = z_tilde
             for (k = 1; k <= nfe; k++) {
-                z_tilde = _wdemean(z_tilde, w, G[., k])
+                z_tilde = _wdemean(z_tilde, w, P[., k], *infos[k])
                 for (j = 1; j <= p; j++) {
-                    X_tilde[., j] = _wdemean(X_tilde[., j], w, G[., k])
+                    X_tilde[., j] = _wdemean(X_tilde[., j], w, P[., k], *infos[k])
                 }
             }
             if (max(abs(z_tilde - z_prev)) < tol * 0.01) break
@@ -283,7 +300,7 @@ void _stpois_hdfe_irls(
         for (inner = 1; inner <= 200; inner++) {
             r_prev = res_tilde
             for (k = 1; k <= nfe; k++) {
-                res_tilde = _wdemean(res_tilde, w, G[., k])
+                res_tilde = _wdemean(res_tilde, w, P[., k], *infos[k])
             }
             if (max(abs(res_tilde - r_prev)) < tol * 0.01) break
         }
@@ -308,7 +325,7 @@ void _stpois_hdfe_irls(
         Xt_prev = X_tilde
         for (k = 1; k <= nfe; k++) {
             for (j = 1; j <= p; j++) {
-                X_tilde[., j] = _wdemean(X_tilde[., j], w, G[., k])
+                X_tilde[., j] = _wdemean(X_tilde[., j], w, P[., k], *infos[k])
             }
         }
         if (max(abs(X_tilde - Xt_prev)) < tol * 0.01) break
