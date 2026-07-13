@@ -1,0 +1,16 @@
+# Stata
+*.log
+*.smcl
+*.dta
+*.gph
+*.stpr
+*.stsem
+
+# Quarto / Typst build artifacts
+paper/*_files/
+paper/.quarto/
+paper/*.typ
+!paper/*.pdf
+
+# macOS
+.DS_Store
