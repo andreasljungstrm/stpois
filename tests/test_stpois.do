@@ -86,21 +86,27 @@ assert e(N_cells) < e(N)
 assert e(N_cells) >= 100   // most of 200 possible cells should have data
 assert e(converged) == 1
 
-// ── 5. fast(moments) ────────────────────────────────────────────────────────
+// ── 5. fast(moments): exact MLE acid test ──────────────────────────────────
 di _n "=== 5. fast(moments) ==="
+// Reference SEs from the full model
+qui poisson _d age income i.edu i.region i.period if _st, exposure(`expv2') nolog
+local se_age_full = _se[age]
+local b_edu3_full = _b[3.edu]
+local se_edu3_full = _se[3.edu]
+
 stpois age income i.edu i.region i.period, fast(moments) nolog
 di "PASS: N=" e(N) " N_cells=" e(N_cells)
 assert e(N_cells) >= 100
-// m_age and m_income must exist in the coefficient vector
-assert !missing(_b[m_age])
-assert !missing(_b[m_income])
-// Structural gamma should have the right sign (positive for age and income)
-// Generous tolerance — it's an approximation on small data
-di "m_age=" _b[m_age] " (true ~0.03, full=" `b_age_full' ")"
-di "m_income=" _b[m_income] " (true ~0.05, full=" `b_inc_full' ")"
-// Just check sign is right (even generous); key test is it runs and gives coefficients
-assert _b[m_age] > 0 | abs(_b[m_age]) < 0.1     // probably positive
-di "PASS: fast(moments) produces structural gamma"
+assert e(converged) == 1
+di "age:   full=" `b_age_full' " moments=" _b[age]
+di "3.edu: full=" `b_edu3_full' " moments=" _b[3.edu]
+// Exact: coefficients AND SEs must match the full MLE
+assert abs(_b[age]     - `b_age_full')   < 1e-6
+assert abs(_se[age]    - `se_age_full')  < 1e-6
+assert abs(_b[income]  - `b_inc_full')   < 1e-6
+assert abs(_b[3.edu]   - `b_edu3_full')  < 1e-6
+assert abs(_se[3.edu]  - `se_edu3_full') < 1e-6
+di "PASS: fast(moments) matches full MLE on coefficients and SEs (1e-6)"
 
 // ── 6. fast methods on stan3 ────────────────────────────────────────────────
 di _n "=== 6. fast methods on stan3 ==="
@@ -110,10 +116,18 @@ stpois age i.surgery, fast(offset) nolog
 assert e(N_cells) == 2
 di "PASS: fast(offset) stan3 → 2 cells"
 
+// fast(moments) is exact even with 2 cells: age identified from
+// within-cell variation, matching poisson _d age i.surgery exactly
+tempvar expv3
+qui gen double `expv3' = _t - _t0
+qui poisson _d age i.surgery if _st, exposure(`expv3') nolog
+local b_age_s3  = _b[age]
+local se_age_s3 = _se[age]
 stpois age i.surgery, fast(moments) nolog
 assert e(N_cells) == 2
-// With 2 cells: m_age and var_x1 will be omitted (underpowered) - that's OK
-di "PASS: fast(moments) stan3 → 2 cells (m_age may be omitted due to few cells)"
+assert abs(_b[age]  - `b_age_s3')  < 1e-6
+assert abs(_se[age] - `se_age_s3') < 1e-6
+di "PASS: fast(moments) stan3 → 2 cells, exact match on age coef and SE"
 
 // ── 7. Replay and e() locals ─────────────────────────────────────────────────
 di _n "=== 7. e() locals and replay ==="

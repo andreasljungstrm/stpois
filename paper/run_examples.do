@@ -64,7 +64,7 @@ timer list
 di _n "Full MLE:      age=" %9.6f `b_age_full' "  income=" %9.6f `b_inc_full'
 
 estimates restore fast_mom
-di "fast(moments): m_age=" %9.6f _b[m_age] "  m_income=" %9.6f _b[m_income]
+di "fast(moments): age=" %9.6f _b[age] "  income=" %9.6f _b[income]
 
 estimates table full fast_off fast_mom, b(%9.6f) se(%9.6f) stats(N)
 

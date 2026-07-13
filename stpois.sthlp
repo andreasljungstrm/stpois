@@ -38,7 +38,7 @@
 {synopt:{opt robust}}synonym for {cmd:vce(robust)}{p_end}
 {synopt:{opth cluster(varname)}}synonym for {cmd:vce(cluster} {it:varname}{cmd:)}; supported with {cmd:absorb()}{p_end}
 
-{syntab:Fast estimation (approximate)}
+{syntab:Fast estimation on collapsed cells}
 {synopt:{opt fast(method)}}{it:method} is {opt offset} or {opt moments};
     see {help stpois##fast:Fast estimation}{p_end}
 
@@ -86,9 +86,11 @@ exp(x{sub:i}β).
 Identical coefficients to {cmd:streg, distribution(exponential)}.
 
 {phang2}
-2. {bf:fast(offset) and fast(moments)}. Approximate fast paths that collapse
-large individual-level datasets to summary cells.
-See {help stpois##fast:Fast estimation} below.
+2. {bf:fast(offset) and fast(moments)}. Fast paths that exploit the cell
+structure of categorical covariates in large individual-level datasets.
+{cmd:fast(moments)} is {bf:exact} (identical coefficients and SEs to the
+full model); {cmd:fast(offset)} is exact for coefficients but conditions
+SEs on a first stage. See {help stpois##fast:Fast estimation} below.
 
 {phang2}
 3. {bf:absorb()}. High-dimensional fixed-effect absorption via iteratively
@@ -131,8 +133,9 @@ only {opt oim} and {opt robust} are supported; other types require
 {pstd}
 When datasets contain millions of individual spell records but a small
 number of categorical risk cells (time period × education × region, etc.),
-the fast paths collapse the data and run Poisson on cells, achieving
-large speed gains. Both methods handle continuous covariates.
+the fast paths move the heavy computation from the microdata to the
+cells, achieving large speed gains. Both methods handle continuous
+covariates.
 
 {pstd}
 {bf:Syntax convention.} {cmd:stpois} uses factor-variable notation to
@@ -179,61 +182,51 @@ offset, it correctly tracks the nonlinear shift from the within-cell
 distribution of the continuous covariates.
 
 {pstd}
-{bf:fast(moments) — CGF/Jensen moment correction}
+{bf:fast(moments) — iterated cell moments (exact MLE)}
 
 {phang2}
-Collapses individual records to categorical cells, computing within-cell
-means, variances, and covariances of the continuous covariates.
-These summary statistics enter the collapsed Poisson model as regressors,
-correcting for the aggregation bias that arises from replacing individual
-X_i by the cell mean X̄_j (Jensen's inequality).
-
-{phang2}
-The correction derives from the Cumulant Generating Function expansion:
+Fits the {bf:exact} individual-level maximum-likelihood model by Newton
+iterations that separate the computation into a cheap microdata pass and
+cell-level algebra. Each iteration accumulates exponentially tilted
+within-cell moments of the continuous covariates —
 
 {p 12 12 2}
-log Σ_{i∈j} exp(γ'X_i) ≈ log(N_j) + γ'μ_j + ½ γ'Σ_j γ
+Σ_{i∈j} μ_i,{space 3}Σ_{i∈j} μ_i X_i,{space 3}Σ_{i∈j} μ_i X_i X_i'
+{space 3}with μ_i = t_i exp(γ'X_i + δ'w_j)
 
 {phang2}
-which for two continuous variables X₁, X₂ gives:
-
-{p 12 12 2}
-log(N_j) + γ₁μ₁ⱼ + γ₂μ₂ⱼ + (γ₁²/2)σ²₁ⱼ + (γ₂²/2)σ²₂ⱼ + γ₁γ₂σ₁₂ⱼ
-
-{phang2}
-The collapsed model includes means ({cmd:m_x1}, {cmd:m_x2}), variances
-({cmd:var_x1}, {cmd:var_x2}), and covariances ({cmd:cov_x1x2}) as
-separate regressors. Coefficients on means are the structural γ
-parameters. Coefficients on variance/covariance terms are estimated
-freely — they serve as a diagnostic: if coef(var_xi) ≈ γi²/2, the
-second-order expansion is stable.
+— and updates all coefficients (continuous γ and categorical δ jointly)
+from the resulting score and Hessian. The per-iteration cost is
+O(n·p²) with p the number of {it:continuous} covariates, versus
+O(n·(p+k)²) for {cmd:poisson} with k categorical parameters, so the
+speed advantage grows with the number of categorical terms.
 
 {phang2}
-Adding {opt skewness} also includes third-order central moments
-(skew_x1, skew_x2) for asymmetrically distributed continuous predictors.
+Coefficients, log likelihood, and standard errors are numerically
+identical to the full {cmd:poisson} model (verified to 1e-6 in the test
+suite). {cmd:vce(oim)} (default), {cmd:vce(robust)}, and
+{cmd:vce(cluster} {it:varname}{cmd:)} are all exact.
+{opt tolerance(#)} and {opt maxiter(#)} control the Newton iterations.
+
+{phang2}
+{opt skewness} is obsolete (retained for backward compatibility; ignored
+with a note): the estimator is exact, so no higher-order correction is
+needed.
 
 {pstd}
-{bf:APPROXIMATION WARNINGS} (both fast paths)
+{bf:APPROXIMATION WARNINGS} ({cmd:fast(offset)} only)
 
 {phang2}
-• Standard errors {bf:do not} account for first-stage estimation
-  uncertainty. SEs are conditional on first-stage/moment estimates and
-  will understate total uncertainty.
+• {cmd:fast(offset)} standard errors {bf:do not} account for first-stage
+  estimation uncertainty; they are conditional on the stage-1 estimates
+  of the continuous coefficients. The constant is most affected;
+  cell-contrast SEs much less so.
 
 {phang2}
-• {cmd:fast(offset)} is consistent when the stage-1 continuous coefficients
-  are unbiased. If continuous covariates correlate strongly with the
-  categorical grouping variables, stage-1 OVB may affect results. The
-  implementation includes all categorical indicators in stage 1 to
-  mitigate this, at the cost of running a full individual-level model first.
-
-{phang2}
-• {cmd:fast(moments)} quality improves when continuous X is approximately
-  normal within each cell. Heavy skewness or fat tails may require the
-  third-order correction ({opt skewness}).
-
-{phang2}
-• For exact MLE, use the standard path (no {cmd:fast()}) or {cmd:absorb()}.
+• {cmd:fast(moments)} carries no such caveat — it is exact — and is the
+  recommended fast path. {cmd:fast(offset)} remains useful when the
+  collapsed cell file itself is the object of interest (for example,
+  when only aggregated data may leave a secure server).
 
 
 {marker hdfe}{...}

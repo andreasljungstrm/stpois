@@ -1,4 +1,4 @@
-*! version 0.3.1  13jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.4.0  13jul2026  Andreas Ljungström, SOFI Stockholm University
 *! Poisson event-history regression for stset data
 program stpois, eclass properties(st)
     version 14
@@ -113,8 +113,10 @@ program stpois, eclass properties(st)
         _stpois_fast_moments `varlist' `wgtexpr', ///
             touse(`touse')                          ///
             exposure(`exposure')                    ///
+            tol(`tolerance')                        ///
+            maxiter(`maxiter')                      ///
             `poisopts' `options'
-        local etitle "Poisson EHA — fast: moment correction (APPROX)"
+        local etitle "Poisson EHA — fast: iterated cell moments (exact MLE)"
         ereturn local fast "moments"
     }
     else {
@@ -186,7 +188,7 @@ program Display
 
     di _n as txt `"`e(title)'"'
 
-    if `"`e(fast)'"' != "" {
+    if `"`e(fast)'"' == "offset" {
         di as txt "  (Note: SEs are conditional on first-stage estimates; " ///
                   "first-stage uncertainty not propagated)"
     }
