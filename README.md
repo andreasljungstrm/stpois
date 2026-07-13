@@ -2,22 +2,10 @@
 
 **Poisson event-history regression for `stset` data in Stata**
 
-`stpois` fits Poisson event-history (exponential hazard) models directly on
-`stset` survival data, using the event indicator `_d` as outcome and time at
-risk `_t - _t0` as exposure. It reproduces `streg, distribution(exponential)`
-exactly on the default path, and adds two things that command does not have:
+`stpois` fits Poisson event-history (exponential hazard) models directly on `stset` survival data, using the event indicator `_d` as outcome and time at risk `_t - _t0` as exposure. It reproduces `streg, distribution(exponential)` exactly on the default path, and adds two things that command does not have:
 
-1. **High-dimensional fixed effects** — `absorb(varlist)` absorbs one or more
-   sets of fixed effects via iteratively reweighted alternating projections
-   (the `ppmlhdfe` approach), implemented in pure Mata with no dependencies.
-   Coefficients and standard errors (OIM, robust HC1, clustered) are
-   numerically exact relative to the equivalent dummy-variable model.
-2. **Fast approximate estimation on collapsed data** — `fast(offset)` and
-   `fast(moments)` collapse millions of individual spell records to a small
-   number of categorical risk cells while retaining continuous covariates,
-   either by folding them into a mutated exposure (two-stage offset) or by
-   including within-cell moments as aggregation-bias corrections (CGF/Jensen
-   expansion).
+1. **High-dimensional fixed effects** — `absorb(varlist)` absorbs one or more sets of fixed effects via iteratively reweighted alternating projections (the `ppmlhdfe` approach), implemented in pure Mata with no dependencies. Coefficients and standard errors (OIM, robust HC1, clustered) are numerically exact relative to the equivalent dummy-variable model.
+2. **Fast approximate estimation on collapsed data** — `fast(offset)` and `fast(moments)` collapse millions of individual spell records to a small number of categorical risk cells while retaining continuous covariates, either by folding them into a mutated exposure (two-stage offset) or by including within-cell moments as aggregation-bias corrections (CGF/Jensen expansion).
 
 ## Installation
 
@@ -51,8 +39,7 @@ stpois age i.surgery, fast(offset)
 stpois age i.surgery, fast(moments)
 ```
 
-See `help stpois` after installation for full syntax, the mathematical basis
-of the fast methods, and approximation warnings.
+See `help stpois` after installation for full syntax, the mathematical basis of the fast methods, and approximation warnings.
 
 ## Syntax
 
@@ -64,10 +51,8 @@ stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
 ```
 
 - `fast()` and `absorb()` may not be combined.
-- In the fast paths, bare variable names are treated as continuous and
-  `i.`-prefixed variables as categorical grouping variables.
-- Fast-path standard errors are conditional on first-stage estimates and do
-  not propagate first-stage uncertainty.
+- In the fast paths, bare variable names are treated as continuous and `i.`-prefixed variables as categorical grouping variables.
+- Fast-path standard errors are conditional on first-stage estimates and do not propagate first-stage uncertainty.
 
 ## Files
 
@@ -91,10 +76,7 @@ From the repository root, in Stata:
 do tests/test_stpois.do
 ```
 
-The suite checks (i) convergence of the standard path, (ii) that
-`absorb()` matches explicit dummy-variable Poisson on coefficients *and*
-standard errors to 1e-4, and (iii) that both fast paths recover the
-structural parameters on synthetic data.
+The suite checks (i) convergence of the standard path, (ii) that `absorb()` matches explicit dummy-variable Poisson on coefficients *and* standard errors to 1e-4, and (iii) that both fast paths recover the structural parameters on synthetic data.
 
 ## Citation
 
@@ -105,9 +87,7 @@ If you use `stpois`, please cite the companion paper (see `paper/`):
 
 ## Author
 
-Andreas Ljungström
-Swedish Institute for Social Research (SOFI), Stockholm University
-andreas.ljungstrom@sofi.su.se
+Andreas Ljungström Swedish Institute for Social Research (SOFI), Stockholm University andreas.ljungstrom@sofi.su.se
 
 ## License
 
