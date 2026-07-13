@@ -43,7 +43,7 @@ See `help stpois` after installation for full syntax, the mathematical basis of 
 
 ## Syntax
 
-```
+```stata
 stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
        vce(vcetype) robust cluster(varname)
        absorb(varlist) tolerance(#) maxiter(#)

@@ -154,7 +154,7 @@ Groups of an absorbed variable in which no events occur are separated in the max
 
 ## Syntax
 
-```
+```stata
 stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
        vce(vcetype) robust cluster(varname)
        absorb(varlist) tolerance(#) maxiter(#)
@@ -193,7 +193,7 @@ Any remaining options on the standard path are passed to `poisson`.
 
 The default path reproduces `streg, distribution(exponential)` exactly (the log likelihoods differ by a constant because `streg` includes the $d_i \log t_i$ terms):
 
-```
+```stata
 . webuse stan3
 . stset t1, failure(died) id(id)
 . stpois age posttran, nolog
@@ -218,7 +218,7 @@ Log likelihood  =   -233.83404                  Prob > chi2     =   0.0000
 
 `absorb()` returns the same coefficients and standard errors as the explicit dummy-variable model, without estimating the absorbed effects:
 
-```
+```stata
 . stpois age posttran, absorb(surgery) nolog
 
 Poisson EHA — HDFE (absorb: surgery)
@@ -242,7 +242,7 @@ For comparison, `poisson _d age posttran i.surgery, exposure(exp)` on the same s
 
 The following simulation generates 500,000 subjects in 200 risk cells (4 education × 5 region × 10 period), with two continuous covariates (`age`, `income`) that affect the hazard but are assigned independently of the cells:
 
-```
+```stata
 . clear
 . set obs 500000
 . set seed 20260713
@@ -262,7 +262,7 @@ The following simulation generates 500,000 subjects in 200 risk cells (4 educati
 
 This yields 6,759 events. Estimating the full model and both fast paths:
 
-```
+```stata
 . stpois age income i.edu i.region i.period, nolog
 . stpois age income i.edu i.region i.period, fast(offset) nolog
 . stpois age income i.edu i.region i.period, fast(moments) nolog
@@ -286,7 +286,7 @@ Three features of this table repay attention. First, `fast(offset)` reproduces t
 
 In applications, the typical sequence splits spells on calendar time or age and then estimates piecewise-constant hazard models:
 
-```
+```stata
 . stsplit period, at(1990(5)2020) after(time=entry)
 . stpois i.period age income i.edu, irr
 . stpois age income, absorb(period edu region) vce(cluster region)
