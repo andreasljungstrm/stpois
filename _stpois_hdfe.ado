@@ -1,4 +1,4 @@
-*! _stpois_hdfe  version 0.5.0  13jul2026
+*! _stpois_hdfe  version 0.6.0  14jul2026
 *! IRLS Poisson with alternating-projections FE absorption (ppmlhdfe-style)
 *! Called by stpois when absorb() is specified. Not intended for direct use.
 program _stpois_hdfe, eclass
@@ -7,7 +7,7 @@ program _stpois_hdfe, eclass
     syntax varlist(fv ts) [aw iw fw pw], ///
         touse(varname)                    ///
         exposure(varname)                 ///
-        absorb(varlist)                   ///
+        absorb(string)                    ///
         [tol(real 1e-8)                   ///
         maxiter(integer 100)              ///
         nolog                             ///
@@ -51,28 +51,45 @@ program _stpois_hdfe, eclass
     qui gen byte `touse2' = `touse'
     if "`clusterv'" != "" markout `touse2' `clusterv'
 
-    foreach fevar of local absorb {
+    foreach aterm of local absorb {
+        local araw = subinstr("`aterm'", "#", " ", .)
+        local araw = subinstr("`araw'", "i.", "", .)
         tempvar n_ev
-        qui bysort `fevar': egen `n_ev' = total(_d * `touse2')
+        qui bysort `araw': egen `n_ev' = total(_d * `touse2')
         qui count if `touse2' & `n_ev' == 0
         if r(N) > 0 {
-            di as txt "  (absorb(`fevar'): dropped " r(N) " obs in zero-event groups)"
+            di as txt "  (absorb(`aterm'): dropped " r(N) " obs in zero-event groups)"
             qui replace `touse2' = 0 if `n_ev' == 0
         }
         drop `n_ev'
     }
 
     // --- Expand factor variables ----------------------------------------------
-    fvrevar `varlist' if `touse2'
-    local xvars_expanded `r(varlist)'
-
+    // fvexpand and fvrevar return parallel lists (one entry per expanded
+    // term, including interactions); keep the non-omitted pairs.
     fvexpand `varlist' if `touse2'
     local xvars_fv_all `r(varlist)'
+    fvrevar `varlist' if `touse2'
+    local xcols_all `r(varlist)'
+
+    local n_terms : word count `xvars_fv_all'
+    local n_cols  : word count `xcols_all'
+    if `n_terms' != `n_cols' {
+        di as error "absorb(): could not expand factor-variable terms"
+        exit 198
+    }
+
     local xvars_fv ""
-    foreach v of local xvars_fv_all {
-        _ms_parse_parts `v'
+    local xvars_expanded ""
+    forvalues ti = 1/`n_terms' {
+        local trm : word `ti' of `xvars_fv_all'
+        local cv  : word `ti' of `xcols_all'
+        _ms_parse_parts `trm'
         local _omit = cond("`r(omit)'" == "", "0", "`r(omit)'")
-        if "`_omit'" != "1" local xvars_fv `xvars_fv' `v'
+        if "`_omit'" != "1" {
+            local xvars_fv       `xvars_fv' `trm'
+            local xvars_expanded `xvars_expanded' `cv'
+        }
     }
 
     local p : word count `xvars_expanded'
@@ -95,10 +112,19 @@ program _stpois_hdfe, eclass
     scalar _hdfe_iter = .
     scalar _hdfe_conv = .
 
+    // FE spec for Mata: terms separated by ";", vars within a term by space
+    local fespec ""
+    foreach aterm of local absorb {
+        local araw = subinstr("`aterm'", "#", " ", .)
+        local araw = subinstr("`araw'", "i.", "", .)
+        local fespec "`fespec';`araw'"
+    }
+    local fespec = substr("`fespec'", 2, .)
+
     mata: _stpois_hdfe_irls(   ///
         "_d",                  ///
         "`xvars_expanded'",    ///
-        "`absorb'",            ///
+        "`fespec'",            ///
         "`exposure'",          ///
         "`touse2'",            ///
         `tol',                 ///
@@ -171,6 +197,46 @@ end
 // ============================================================================
 mata:
 
+// Panel boundaries of a sorted key matrix: rows where any key column
+// changes start a new panel. Returns (start, end) rows, the same
+// format as panelsetup().
+real matrix _sthdfe_panels(real matrix Ks)
+{
+    real colvector flag, starts, ends
+    real scalar    n
+
+    n    = rows(Ks)
+    flag = J(n, 1, 1)
+    if (n > 1) {
+        flag[|2 \ n|] = rowmax(Ks[|2, 1 \ n, .|] :!= Ks[|1, 1 \ n - 1, .|])
+    }
+    starts = selectindex(flag)
+    if (rows(starts) > 1) ends = starts[|2 \ rows(starts)|] :- 1 \ n
+    else                  ends = J(1, 1, n)
+    return((starts, ends))
+}
+
+// Segment sums over a sorted matrix via running sums: O(n) regardless
+// of the number of segments.
+real matrix _sthdfe_segsum(real matrix Ap, real colvector ends)
+{
+    real matrix    out
+    real colvector cs
+    real scalar    j, nseg
+
+    nseg = rows(ends)
+    out  = J(nseg, cols(Ap), .)
+    for (j = 1; j <= cols(Ap); j++) {
+        cs         = quadrunningsum(Ap[., j])
+        out[., j]  = cs[ends]
+        if (nseg > 1) {
+            out[|2, j \ nseg, j|] = out[|2, j \ nseg, j|] -
+                                    cs[ends[|1 \ nseg - 1|]]
+        }
+    }
+    return(out)
+}
+
 // Weighted within-group demeaning using a precomputed sort permutation
 // and panel boundaries: one O(n) pass per call, independent of the
 // number of group levels.
@@ -221,16 +287,17 @@ void _stpois_hdfe_irls(
     // Declare all variables at function scope
     real colvector touse_col, idx
     real colvector y, E
-    string rowvector xnames, fenames
+    string rowvector xnames, fes
     real scalar    p, nfe, n
-    real matrix    X, G, P
+    real matrix    X, M, P
+    real colvector prm
     pointer(real matrix) rowvector infos
     real scalar    sum_y, sum_E
     real colvector eta, b_old, b_new
     real colvector mu, z, w, z_tilde, res, res_tilde, FE_c, z_prev, r_prev
-    real matrix    X_tilde, XtW, XtWX, Xt_prev, H, Hinv, V, S, B
-    real colvector XtWz, lmu, cids, ucids, si
-    real scalar    iter, inner, delta, converged, j, k, ll, G_clust, i_c
+    real matrix    X_tilde, XtW, XtWX, Xt_prev, H, Hinv, V, S, B, SG, info_c
+    real colvector XtWz, lmu, cids, permc
+    real scalar    iter, inner, delta, converged, j, k, ll, G_clust
 
     // --- Load data -----------------------------------------------------------
     touse_col = st_data(., tousevar)
@@ -240,21 +307,25 @@ void _stpois_hdfe_irls(
     y  = st_data(idx, yvar)
     E  = st_data(idx, evar)
 
-    xnames  = tokens(xvars_str)
-    fenames = tokens(fevars_str)
-    p   = cols(xnames)
-    nfe = cols(fenames)
+    xnames = tokens(xvars_str)
+    p      = cols(xnames)
+    X      = st_data(idx, xnames)
 
-    X = st_data(idx, xnames)
-    G = st_data(idx, fenames)
+    // FE spec: terms separated by ";"; each term lists the variables whose
+    // cross-classification is absorbed (single variable or interaction)
+    fes = tokens(fevars_str, ";")
+    fes = select(fes, fes :!= ";")
+    nfe = cols(fes)
 
     // Precompute, per FE, the sort permutation and panel boundaries once;
     // every demeaning pass is then O(n) regardless of the level count
     P     = J(n, nfe, .)
     infos = J(1, nfe, NULL)
     for (k = 1; k <= nfe; k++) {
-        P[., k]  = order(G[., k], 1)
-        infos[k] = &panelsetup(G[P[., k], k], 1)
+        M        = st_data(idx, tokens(fes[k]))
+        prm      = order(M, (1..cols(M)))
+        P[., k]  = prm
+        infos[k] = &_sthdfe_panels(M[prm, .])
     }
 
     // --- Initialize ----------------------------------------------------------
@@ -347,17 +418,15 @@ void _stpois_hdfe_irls(
         V = Hinv * B * Hinv
     }
     else {
-        // Cluster sandwich: sum scores within cluster, G/(G-1) correction
+        // Cluster sandwich: scores summed within clusters via one sort
+        // and segment sums, G/(G-1) correction
         cids    = st_data(idx, clustervar)
-        ucids   = uniqrows(cids)
-        G_clust = rows(ucids)
-        B       = J(p, p, 0)
-        for (i_c = 1; i_c <= G_clust; i_c++) {
-            si = quadcolsum(S[selectindex(cids :== ucids[i_c, 1]), .])
-            B  = B + si' * si
-        }
-        B = B * (G_clust / (G_clust - 1))
-        V = Hinv * B * Hinv
+        permc   = order(cids, 1)
+        info_c  = _sthdfe_panels(cids[permc])
+        G_clust = rows(info_c)
+        SG      = _sthdfe_segsum(S[permc, .], info_c[., 2])
+        B       = quadcross(SG, SG) * (G_clust / (G_clust - 1))
+        V       = Hinv * B * Hinv
     }
 
     // --- Log-likelihood ------------------------------------------------------

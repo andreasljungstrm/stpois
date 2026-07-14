@@ -1,4 +1,4 @@
-// test_moments_exact.do -- fast(moments) must match full MLE on coefs AND SEs
+// test_fast_exact.do -- fast must match full MLE on coefs AND SEs
 discard
 adopath ++ "`c(pwd)'"
 
@@ -31,7 +31,7 @@ local b_cons = _b[_cons]
 local se_cons = _se[_cons]
 local ll_ref = e(ll)
 
-stpois age income i.edu i.region, fast(moments) nolog
+stpois age income i.edu i.region, fast nolog
 di _n "age:    ref b=" `b_age'  " se=" `se_age'  "  new b=" _b[age]    " se=" _se[age]
 di    "income: ref b=" `b_inc'  " se=" `se_inc'  "  new b=" _b[income] " se=" _se[income]
 di    "3.edu:  ref b=" `b_edu3' " se=" `se_edu3' "  new b=" _b[3.edu]  " se=" _se[3.edu]
@@ -52,7 +52,7 @@ di "PASS: exact match on coefficients, SEs, and ll"
 qui poisson _d age income i.edu i.region if _st, exposure(`expv') vce(robust) nolog
 local se_age_r = _se[age]
 local se_edu3_r = _se[3.edu]
-stpois age income i.edu i.region, fast(moments) vce(robust) nolog
+stpois age income i.edu i.region, fast vce(robust) nolog
 di _n "robust se(age):   ref=" `se_age_r' " new=" _se[age]
 di    "robust se(3.edu): ref=" `se_edu3_r' " new=" _se[3.edu]
 assert abs(_se[age]   - `se_age_r')  < 1e-6
@@ -62,7 +62,7 @@ di "PASS: robust VCE exact"
 // cluster VCE
 qui poisson _d age income i.edu i.region if _st, exposure(`expv') vce(cluster region) nolog
 local se_age_c = _se[age]
-stpois age income i.edu i.region, fast(moments) vce(cluster region) nolog
+stpois age income i.edu i.region, fast vce(cluster region) nolog
 di _n "cluster se(age): ref=" `se_age_c' " new=" _se[age]
 assert abs(_se[age] - `se_age_c') < 1e-6
 di "PASS: cluster VCE exact"

@@ -1,4 +1,4 @@
-*! version 0.5.0  13jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.6.0  14jul2026  Andreas Ljungström, SOFI Stockholm University
 *! Poisson event-history regression for stset data
 program stpois, eclass properties(st)
     version 14
@@ -19,9 +19,8 @@ program stpois, eclass properties(st)
         VCE(passthru)                         ///
         ROBust                                ///
         CLuster(varname)                      ///
-        ABSorb(varlist)                       ///
-        FAST(string)                          ///
-        MTopel                                ///
+        ABSorb(string)                        ///
+        FAST                                  ///
         TOLerance(real 1e-8)                  ///
         MAXIter(integer 100)                  ///
         *                                     ///
@@ -30,25 +29,30 @@ program stpois, eclass properties(st)
     st_is 2 analysis
 
     // Validate
-    if `"`fast'"' != "" & `"`absorb'"' != "" {
-        di as error "fast() and absorb() may not be combined"
+    if "`fast'" != "" & `"`absorb'"' != "" {
+        di as error "fast and absorb() may not be combined"
         exit 198
     }
-    if `"`fast'"' != "" {
-        local fast = lower("`fast'")
-        if !inlist("`fast'", "offset", "moments") {
-            di as error "fast() requires {bf:offset} or {bf:moments}"
-            exit 198
+    // absorb() accepts variable names and varname#varname interactions
+    local absorb_raw ""
+    if `"`absorb'"' != "" {
+        foreach aterm of local absorb {
+            local araw = subinstr("`aterm'", "#", " ", .)
+            local araw = subinstr("`araw'", "i.", "", .)
+            foreach av of local araw {
+                capture confirm numeric variable `av'
+                if _rc {
+                    di as error "absorb(): `av' is not a numeric variable"
+                    exit 198
+                }
+            }
+            local absorb_raw `absorb_raw' `araw'
         }
-    }
-    if "`mtopel'" != "" & `"`fast'"' != "offset" {
-        di as error "mtopel may only be specified with fast(offset)"
-        exit 198
     }
 
     // Build sample
     marksample touse
-    if `"`absorb'"' != "" markout `touse' `absorb'
+    if `"`absorb'"' != "" markout `touse' `absorb_raw'
     qui replace `touse' = 0 if _st == 0
 
     // Exposure
@@ -106,29 +110,15 @@ program stpois, eclass properties(st)
         local etitle "Poisson EHA — HDFE (absorb: `absorb')"
         ereturn local absorb "`absorb'"
     }
-    else if `"`fast'"' == "offset" {
-        _stpois_fast_offset `varlist' `wgtexpr', ///
-            touse(`touse')                         ///
-            exposure(`exposure')                   ///
-            `mtopel'                               ///
+    else if "`fast'" != "" {
+        _stpois_fast `varlist' `wgtexpr', ///
+            touse(`touse')                  ///
+            exposure(`exposure')            ///
+            tol(`tolerance')                ///
+            maxiter(`maxiter')              ///
             `poisopts' `options'
-        if "`mtopel'" != "" {
-            local etitle "Poisson EHA — fast: two-stage offset (Murphy–Topel SEs)"
-        }
-        else {
-            local etitle "Poisson EHA — fast: two-stage offset (conditional SEs)"
-        }
-        ereturn local fast "offset"
-    }
-    else if `"`fast'"' == "moments" {
-        _stpois_fast_moments `varlist' `wgtexpr', ///
-            touse(`touse')                          ///
-            exposure(`exposure')                    ///
-            tol(`tolerance')                        ///
-            maxiter(`maxiter')                      ///
-            `poisopts' `options'
-        local etitle "Poisson EHA — fast: iterated cell moments (exact MLE)"
-        ereturn local fast "moments"
+        local etitle "Poisson EHA — fast (cell-accelerated exact MLE)"
+        ereturn local fast "fast"
     }
     else {
         // ── Standard path ─────────────────────────────────────────────────
@@ -198,17 +188,6 @@ program Display
     syntax [, IRr Level(cilevel) *]
 
     di _n as txt `"`e(title)'"'
-
-    if `"`e(fast)'"' == "offset" {
-        if e(mtopel) == 1 {
-            di as txt "  (Note: SEs are Murphy–Topel corrected; " ///
-                      "first-stage uncertainty propagated)"
-        }
-        else {
-            di as txt "  (Note: SEs are conditional on first-stage estimates; " ///
-                      "specify mtopel to propagate first-stage uncertainty)"
-        }
-    }
 
     di _n                                                                    ///
         as txt "No. of subjects = "                                          ///

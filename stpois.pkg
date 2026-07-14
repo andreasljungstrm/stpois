@@ -2,11 +2,10 @@ v 3
 d stpois: Poisson event-history regression for stset data
 d Andreas Ljungström, SOFI Stockholm University
 d andreas.ljungstrom@sofi.su.se
-d Distribution-Date: 20260713
+d Distribution-Date: 20260714
 d
 f stpois.ado
 f stpois_p.ado
 f stpois.sthlp
 f _stpois_hdfe.ado
-f _stpois_fast_offset.ado
-f _stpois_fast_moments.ado
+f _stpois_fast.ado
