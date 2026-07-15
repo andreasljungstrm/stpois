@@ -1,0 +1,4 @@
+method,n,flavor,reps,time_med_s,time_lo_s,time_hi_s,b_age,se_age
+poisson_1000_dummies,1000000,IC,10,34.3120,32.8560,38.6340,0.0266067,0.0017000
+stpois_absorb_g,1000000,IC,10,2.8980,2.8160,3.3870,0.0266067,0.0017000
+ppmlhdfe_absorb_g,1000000,IC,10,4.5950,4.4470,5.2690,0.0266067,.

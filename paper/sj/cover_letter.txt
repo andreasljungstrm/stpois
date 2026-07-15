@@ -1,0 +1,34 @@
+Dear Editors of the Stata Journal,
+
+Please consider the enclosed manuscript, "stpois: Fast Poisson
+event-history regression with high-dimensional fixed effects", for
+publication in the Stata Journal.
+
+The article introduces the community-contributed command stpois, which
+fits Poisson event-history models directly on stset data through three
+estimation paths that all return the exact maximum-likelihood
+estimates: a standard path wrapping poisson, a high-dimensional
+fixed-effects path (iteratively reweighted alternating projections in
+Mata, with no external dependencies), and a cell-accelerated fast path
+that retains continuous covariates. Coefficients, log likelihoods, and
+OIM, robust, and cluster-robust standard errors are numerically
+identical to the corresponding poisson model on every path, which the
+enclosed test suite verifies to 1e-6.
+
+The submission zip contains the manuscript PDF, the ado-files, the
+help file, the test suite, the do-file that regenerates every log
+shown in the article (all examples use webuse stan3 or seeded
+simulated data), the benchmark scripts with their CSV output backing
+the timing tables, and readme.txt.
+
+The manuscript is original, is not under consideration elsewhere, and
+reports no conflicts of interest.
+
+Corresponding author:
+  Andreas Ljungström
+  Swedish Institute for Social Research (SOFI)
+  Stockholm University, SE-106 91 Stockholm, Sweden
+  andreas.ljungstrom@sofi.su.se
+
+Sincerely,
+Andreas Ljungström

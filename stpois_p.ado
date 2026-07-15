@@ -1,4 +1,4 @@
-*! version 0.1.0  13jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.8.1  15jul2026  Andreas Ljungström, SOFI Stockholm University
 program stpois_p
     version 14
 
@@ -26,15 +26,33 @@ program stpois_p
         exit 198
     }
 
+    // After absorb(), e(b) does not contain the absorbed fixed effects.
+    // Their total contribution was stored at estimation in the variable
+    // named by e(fes_var) (default _stpois_fe, or the d() option), so the
+    // full linear predictor is Xb + that variable.
+    local fevar ""
+    if `"`e(absorb)'"' != "" {
+        local fevar `"`e(fes_var)'"'
+        capture confirm numeric variable `fevar'
+        if _rc {
+            di as error "the fixed-effect variable `fevar' stored by absorb() was not found;"
+            di as error "it is required for predictions after absorb() -- refit the model"
+            exit 111
+        }
+    }
+
     local newv `varlist'
 
     // Copy e(b) to a named tempmatrix before scoring (avoids r(111) inside margins)
     tempname bmat
     matrix `bmat' = e(b)
 
-    // Linear predictor Xβ (no offset)
+    // Linear predictor Xβ (no offset), plus the absorbed FE contribution
     tempvar xbhat
     matrix score double `xbhat' = `bmat' `if' `in'
+    if "`fevar'" != "" {
+        qui replace `xbhat' = `xbhat' + `fevar' `if' `in'
+    }
 
     if "`xb'" != "" {
         // `offset' = "nooffset" when user specifies nooffset; "" otherwise

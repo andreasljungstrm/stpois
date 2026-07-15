@@ -1,0 +1,1127 @@
+% arxiv-template.tex -- pandoc template for the arXiv/preprint version.
+%
+% Consumed by: quarto render stpois_sj.qmd --to latex \
+%   --template ../arxiv/arxiv-template.tex --output stpois_arxiv.tex
+%
+% Defines Stata Journal macro compatibility so the body produced from
+% stpois_sj.qmd compiles without the SJ style files.
+
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage[round,authoryear]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+% ── Stata Journal macro layer ─────────────────────────────────────────────
+% Load StataCorp's official stata.sty (same file the SJ build uses) so the
+% Stata log tables, box-drawing rules (\HLI/\TOPT/\PLUS/\BOTT/\VBAR),
+% command-syntax boxes (stsyntax), and helper macros (\stcmd, \stref,
+% \varlist, \optional, \num, \oom, \hangpara, ...) render identically to the
+% Stata Journal PDF instead of being stubbed out.
+\usepackage{stata}
+
+% Article tag (SJ-only macro, used in the keywords block; not in stata.sty)
+\def\inserttag{stpois}
+
+% Pandoc compact-list boilerplate
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% ── Document metadata ─────────────────────────────────────────────────────
+
+\title{stpois: Fast Poisson event-history regression with
+high-dimensional fixed effects}
+
+\author{%
+}
+
+\date{}
+
+% ── Document body ─────────────────────────────────────────────────────────
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent Poisson regression on episode-split survival data is a
+workhorse of event-history analysis, but two practical obstacles limit
+its use with full-population register data: models with rich
+fixed-effect structures become slow or infeasible to estimate with
+explicit dummy variables, and continuous covariates prevent the
+collapsing of individual records to risk cells that otherwise makes such
+models fast. This article introduces the community-contributed command
+\stcmd{stpois}, which fits Poisson event-history models directly on
+\stcmd{stset} data through three estimation paths, all of which return
+maximum-likelihood estimates that agree with \stcmd{poisson} to at least
+\(10^{-6}\): a standard path that wraps \stcmd{poisson} with automatic
+exposure; a high-dimensional fixed-effects path implemented via
+iteratively reweighted alternating projections in Mata; and a fast path
+that accelerates estimation through the cell structure of the
+categorical covariates. The fast path computes each Newton iteration
+from exponentially tilted within-cell moments in a single pass over the
+microdata. Coefficients, log likelihoods, and observed-information,
+robust, and cluster--robust standard errors agree with the corresponding
+\stcmd{poisson} model on every path to at least \(10^{-6}\) (typically
+\(\sim 10^{-8}\)); factor-variable interactions and weights are
+supported throughout, the two acceleration mechanisms can be combined,
+and postestimation predictions after absorption include the recovered
+fixed effects. Benchmarks against \stcmd{streg}, \stcmd{poisson}, and
+\stcmd{ppmlhdfe} document the speed gains in three settings:
+episode-split workflows, all-categorical rate models, and models with
+high-dimensional fixed effects.
+\end{abstract}
+
+\medskip\noindent\textbf{Keywords:} \inserttag, stpois, event-history
+analysis, Poisson regression, piecewise exponential model,
+high-dimensional fixed effects, register data
+
+\bigskip
+
+\section{Introduction}
+
+\label{sec:intro}
+
+The equivalence between piecewise-constant hazard models and Poisson
+regression on episode-split data is one of the older and more useful
+results in event-history analysis
+\citep{holford1980, laird1981, whitehead1980}. Splitting each subject's
+time at risk into episodes, treating the event indicator in each episode
+as a Poisson count, and entering the log of exposure time as an offset
+yields maximum-likelihood estimates of a proportional-hazards model with
+a hazard that is constant within episodes. In Stata, this model can be
+fitted with \stcmd{poisson} after manually generating the exposure
+variable, or---for the single-episode exponential case---with
+\stcmd{streg, distribution(exponential)}. The approach is standard in
+epidemiology \citep{clayton1993, carstensen2007} and is covered at
+length by \citet{rabe2022}.
+
+Two practical obstacles arise when this framework meets modern
+administrative data. Full-population registers of the kind available in
+the Scandinavian countries routinely produce analysis files with
+millions or tens of millions of episode records, particularly after
+splitting on calendar time, age, and duration. First, models with rich
+fixed-effect structures---birth cohorts, municipalities, detailed
+occupational codes, or their interactions---become slow or infeasible
+when the fixed effects are entered as explicit dummy variables, since
+estimation time and memory grow quadratically with the parameter count.
+The \stcmd{ppmlhdfe} command \citep{correia2020} solves this problem for
+general Poisson models, building on the alternating-projections approach
+of \citet{guimaraes2010}; it depends on the \stcmd{ftools} and
+\stcmd{reghdfe} packages, so deploying it means installing that chain,
+which can add friction in the locked-down secure environments where
+register data must typically be analyzed. Second, and less widely
+appreciated, the Poisson likelihood for purely categorical covariates
+depends on the data only through the sums of events and exposure within
+covariate cells. Estimation on the collapsed cell data is then
+\emph{exact} and can reduce the per-iteration operation count by orders
+of magnitude when the number of cells is far smaller than the number of
+records. A single continuous covariate breaks this property, and
+analysts face an unattractive choice between discretizing the covariate
+and forgoing the speed advantage entirely.
+
+The command described in this article, \stcmd{stpois}, addresses both
+obstacles within a single interface for \stcmd{stset} data. It offers
+three estimation paths, all of which return maximum-likelihood estimates
+and standard errors that agree with \stcmd{poisson} to the tolerances
+documented in section~\ref{sec:validation}:
+
+\begin{enumerate}
+\item A \textbf{standard path} that wraps \stcmd{poisson}, using the event indicator \stcmd{\_d} as outcome and time at risk \stcmd{\_t} $-$ \stcmd{\_t0} as exposure.  Coefficients and standard errors are identical to \stcmd{streg, distribution(exponential)}.
+\item A \textbf{high-dimensional fixed-effects path}, \stcmd{absorb()}, implementing iteratively reweighted least squares with alternating-projections demeaning in Mata---the same mathematical approach as \stcmd{ppmlhdfe}, but self-contained with no dependencies.  Absorbed terms may be single variables or interactions like \stcmd{region\#period}.  Observed-information, robust, and cluster--robust standard errors agree with those from the corresponding dummy-variable model to at least $10^{-6}$.
+\item A \textbf{fast path}, option \stcmd{fast}, which accelerates exact estimation through the cell structure of the categorical covariates.  Newton iterations on the full likelihood are computed from exponentially tilted within-cell moments of the individual-level covariates, accumulated in a single pass over the microdata per iteration; all remaining algebra runs on the cells.  When every covariate is categorical, the iterations run entirely on the collapsed cell sums.  The fast path requires at least one categorical term to define the cells.
+\end{enumerate}
+
+Factor-variable interactions---continuous\#continuous,
+continuous\#categorical, and categorical\#categorical---are supported on
+all paths, as are frequency, importance, and sampling weights, with
+weighted results matching the weighted \stcmd{poisson} model to the same
+tolerance. The \stcmd{fast} and \stcmd{absorb()} paths may be combined:
+the absorbed fixed effects are then concentrated out of the
+cell-accelerated likelihood. Section~\ref{sec:model}
+sets out the modeling framework, section~\ref{sec:fast}
+describes the fast path, and section~\ref{sec:hdfe}
+describes the fixed-effects algorithm.
+Sections~\ref{sec:command}
+and~\ref{sec:examples} document the syntax and
+illustrate the command, and section~\ref{sec:validation}
+verifies the numerical claims and benchmarks the command against
+\stcmd{streg} and \stcmd{poisson}.
+
+\section{Poisson event-history regression}
+
+\label{sec:model}
+
+Consider \stcmd{stset} data in which record \(i\) contributes an event
+indicator \(d_i \in \{0, 1\}\) (Stata's \stcmd{\_d}) and a time at risk
+\(t_i = \mbox{\stcmd{\_t}} - \mbox{\stcmd{\_t0}}\). Under a
+proportional-hazards model with hazard rate
+\(\lambda_i = \exp(\mathbf{x}_i'\bm{\beta})\) constant within records,
+the log likelihood for right-censored data is, up to a constant,
+
+\begin{equation*}
+\ell(\bm{\beta}) = \sum_i \left\{ d_i \, \mathbf{x}_i'\bm{\beta}
+  + d_i \log t_i - t_i \exp(\mathbf{x}_i'\bm{\beta}) \right\},
+\end{equation*}
+
+in which the \(d_i \log t_i\) term is constant in \(\bm{\beta}\); this
+is proportional to the likelihood of a Poisson model for \(d_i\) with
+mean \(\mu_i = t_i \exp(\mathbf{x}_i'\bm{\beta})\) and offset
+\(\log t_i\). Hence any software that fits Poisson regression with an
+offset fits this hazard model, and duration dependence or period effects
+are accommodated by episode splitting (\stcmd{stsplit}) followed by
+indicator variables for the resulting time bands
+\citep{holford1980, laird1981}. The Poisson ``counts'\,' here are 0/1
+event indicators; nothing requires the outcome to be a genuine count,
+and the pseudo-maximum-likelihood results of \citet{gourieroux1984}
+imply that the coefficient estimates are consistent whenever the
+log-linear mean is correctly specified, with robust standard errors
+available in the usual way \citep[see also][]{santos2006}.
+
+\stcmd{stpois} fits exactly this model on the current \stcmd{stset}
+data. On the standard path, it constructs the exposure variable, calls
+\stcmd{poisson}, and posts results with survival-flavored headers
+(numbers of subjects and failures, time at risk). The point of the
+command, however, is not the convenience wrapper but the two departures
+from it: the fast path (section~\ref{sec:fast}) and the
+fixed-effects path (section~\ref{sec:hdfe}).
+
+\subsection{Sufficiency of cell sums under categorical
+covariates}\label{sufficiency-of-cell-sums-under-categorical-covariates}
+
+\label{sec:suff}
+
+When all covariates are categorical, the covariate vector takes a finite
+number of distinct values, indexing cells \(j = 1, \ldots, J\). The log
+likelihood above then depends on the data only through the within-cell
+sums \(D_j = \sum_{i \in j} d_i\) and \(T_j = \sum_{i \in j} t_i\):
+
+\begin{equation*}
+\ell(\bm{\beta}) = \sum_j \left\{ D_j\, \mathbf{x}_j'\bm{\beta}
+  - T_j \exp(\mathbf{x}_j'\bm{\beta}) \right\} + \text{const},
+\end{equation*}
+
+\((D_j, T_j)\) are sufficient statistics, and estimation on the \(J\)
+collapsed cells reproduces the individual-level maximum-likelihood
+estimates exactly---coefficients, standard errors, and all. With
+millions of episode records but a few hundred cells (period \(\times\)
+education \(\times\) region, say), the gain is dramatic, and this is the
+standard trick behind register-based rate modeling
+\citep{clayton1993, dickman2004}. A continuous covariate destroys the
+sufficiency because \(\exp(\gamma x_i)\) no longer aggregates:
+\(\sum_{i \in j} t_i \exp(\gamma x_i) \neq T_j \exp(\gamma \bar{x}_j)\)
+by strict convexity of the exponential, where
+\(\bar{x}_j = T_j^{-1}\sum_{i \in j} t_i x_i\) is the exposure-weighted
+within-cell mean (the two sides coincide only in the degenerate case of
+no within-cell variation in \(x\)). The fast path generalizes the
+collapsing idea so that it delivers the exact maximum-likelihood
+estimator in the presence of continuous covariates as well.
+
+\section{Fast exact estimation: The fast option}
+
+\label{sec:fast}
+
+\subsection{Term classification and
+cells}\label{term-classification-and-cells}
+
+With \stcmd{fast}, \stcmd{stpois} classifies each expanded term of the
+varlist by its pieces. Terms built entirely from factor-variable
+pieces---\stcmd{i.edu}, \stcmd{i.edu\#i.region}---are constant within
+cells and enter the model at the cell level, with coefficient vector
+\(\bm{\delta}\) on the cell-level design \(\mathbf{w}_j\). Terms
+involving at least one continuous piece---\stcmd{age},
+\stcmd{c.age\#c.income}, \stcmd{c.age\#i.edu}---enter at the individual
+level, with coefficient vector \(\bm{\gamma}\) on the individual-level
+design matrix \(\mathbf{X}_i\) (the columns of the expanded model matrix
+corresponding to terms with at least one continuous piece), so that
+\(\mu_i = t_i \exp(\bm{\gamma}'\mathbf{X}_i + \bm{\delta}'\mathbf{w}_{j(i)})\),
+where \(j(i)\) denotes the cell of record \(i\). The cells \(j\) are the
+cross-classification of the categorical variables appearing in the
+cell-level terms; at least one cell-level term is required.
+
+\subsection{Newton iterations on tilted cell
+moments}\label{newton-iterations-on-tilted-cell-moments}
+
+The score and observed information of the Poisson likelihood decompose
+into fixed cell sums and \emph{exponentially tilted within-cell moments}
+\citep{jensen1995} of the individual-level covariates:
+
+\begin{equation*}
+M_j = \sum_{i \in j} \mu_i, \qquad
+\mathbf{m}_j = \sum_{i \in j} \mu_i \mathbf{X}_i, \qquad
+\mathbf{Q} = \sum_i \mu_i \mathbf{X}_i \mathbf{X}_i'.
+\end{equation*}
+
+The score is
+\(\left(\sum_i d_i\mathbf{X}_i - \sum_j \mathbf{m}_j,\; \sum_j \mathbf{w}_j (D_j - M_j)\right)\)
+and the information matrix has blocks \(\mathbf{Q}\),
+\(\sum_j \mathbf{m}_j \mathbf{w}_j'\), and
+\(\sum_j M_j \mathbf{w}_j \mathbf{w}_j'\). The \(\mu_i\)-weighting in
+these quantities is the standard Poisson information weight:
+\citet[sec.~2.5]{mccullagh1989} derive that the IRLS working weight for
+observation \(i\) is \(W_i = [V(\mu_i)(d\eta_i/d\mu_i)^2]^{-1}\); with
+variance function \(V(\mu)=\mu\) and log-link derivative
+\(d\eta/d\mu = \mu^{-1}\) this gives \(W_i = \mu_i\), so \(M_j\),
+\(\mathbf{m}_j\), and \(\mathbf{Q}\) are \(W\)-weighted sums of the
+exposure, the individual-level covariates, and their outer products.
+Because the log link is canonical for Poisson, the expected and observed
+information coincide \citep[p.\,53]{mccullagh1989}, so Newton--Raphson
+and Fisher scoring reduce to the same algorithm and the step direction
+is algebraically exact. Each Newton iteration therefore requires one
+pass over the microdata to accumulate the tilted moments---at cost
+\(O(np^2)\), with \(p\) the number of \emph{individual-level} columns
+only---after which everything happens on the \(J\) cells. A full-model
+Newton step in \stcmd{poisson}, by contrast, costs \(O(n(p+k)^2)\) with
+\(k\) the number of cell-level parameters, so the per-iteration
+floating-point saving is a factor of roughly \((p+k)^2/p^2\), and it
+grows with the richness of the categorical structure. Step-halving on
+the log likelihood guards the updates, and, writing
+\(\bm{\theta} = (\bm{\gamma}', \bm{\delta}')'\) for the stacked
+parameter vector, convergence is declared when
+\(\max_\ell |\Delta\theta_\ell| / (1 + |\theta_\ell|)\), evaluated at
+the updated parameter vector, falls below \stcmd{tolerance()}.
+
+When \emph{every} term is cell-level (\(p = 0\)), the sufficiency result
+of section~\ref{sec:suff} applies directly and the
+estimator depends on the data only through the collapsed sums
+\((D_j, T_j)\). In this case, with no absorbed fixed effects and the
+default observed-information VCE, \stcmd{stpois} routes estimation to
+Stata's compiled \stcmd{collapse} followed by \stcmd{poisson} on the
+cell sums: the fit is exact by sufficiency and faster than iterating in
+Mata over the microdata. The robust and cluster--robust variance
+estimators need the per-observation scores---the squared cell residual
+is not the cell sum of squared residuals---so under \stcmd{vce(robust)}
+or \stcmd{vce(cluster)} the pure cell-level model instead runs a Newton
+iteration on \((D_j, T_j)\) at \(O(Jk^2)\) per step, independent of the
+number of episode records.
+
+This is Newton on the exact likelihood: the score/information
+decomposition involves no linearization or discretization, so the
+estimator is algebraically the full-model maximum-likelihood estimator,
+and the two maximizers differ only at their iterative convergence
+tolerance. In practice, coefficients, the log likelihood, and the
+observed-information standard errors agree with the full \stcmd{poisson}
+model to at least \(10^{-6}\) (typically \(\sim 10^{-8}\)), and robust
+and cluster--robust variance estimators are computed from the same
+per-observation scores as their \stcmd{poisson} counterparts, with the
+HC1 and \(G/(G-1)\) small-sample corrections (\(G\) the number of
+clusters). Because the continuous coefficients are estimated from the
+full individual-level likelihood, they are identified---with full
+efficiency---even when the continuous covariates do not vary across
+cells at all.
+
+\subsection{Implementation}\label{implementation}
+
+The data handling is designed for large datasets, adopting the strategy
+popularized by the \stcmd{ftools} project \citep{correia2016ftools}:
+group structures are computed from a single \stcmd{order()} sort in
+Mata, segment boundaries are found by comparing adjacent sorted rows,
+and all within-group sums---the cell aggregates, the tilted moments, and
+the within-cluster score sums of the cluster--robust variance
+estimator---are running-sum differences over the sorted data, each an
+\(O(n)\) pass independent of the number of groups. Interaction columns
+are constructed directly from the raw variables in Mata. In this Mata
+engine---used whenever the model has continuous covariates, and for the
+robust and cluster--robust cell-level fits---there are no
+\stcmd{preserve}/\stcmd{collapse} round-trips and no temporary variables
+in the dataset; beyond the single sort permutation, memory overhead is
+one copy of the loaded columns. (The one exception is the purely
+categorical model under the default observed-information VCE, which is
+delegated to Stata's \stcmd{collapse} and \stcmd{poisson} as described
+in section~\ref{sec:fast}.) With weights, every
+likelihood contribution, cell sum, and tilted moment is
+weight-multiplied, so the weighted estimates remain the exact weighted
+maximum-likelihood estimates.
+
+\subsection{Combining fast with absorbed fixed
+effects}\label{combining-fast-with-absorbed-fixed-effects}
+
+\label{sec:combo}
+
+\stcmd{fast} may be combined with \stcmd{absorb()}
+(section~\ref{sec:hdfe}). The absorbed effects are then
+concentrated out of the likelihood by closed-form updates: for Poisson,
+the profile-maximizing effect of absorbed group \(g\) given the
+remaining parameters is
+\(\alpha_g = \ln(\sum_{i \in g} d_i / \sum_{i \in g} \mu_i)\), and
+Gauss--Seidel cycles of this update across the absorbed terms are
+observed in practice to converge to the profile optimum; formal
+convergence guarantees for the nonlinear profile Gauss--Seidel are not
+available---the approach is used by the R package \stcmd{FENmlm}
+\citep{berge2018} and its successor \stcmd{fixest}. Each Newton step is
+then taken on the profile likelihood: the design columns
+(individual-level and cell-level) are weighted-demeaned within the
+absorbed groups, and the step uses the demeaned score and information.
+Given that the inner fixed-effect solve has converged to the profile
+optimum, this is, by the Frisch--Waugh--Lovell logic applied through the
+IRLS local linearization, the profile Newton direction and, at
+convergence, the partitioned variance matrix. Step-halving re-solves the
+fixed effects at every trial point, so the profile likelihood increases
+monotonically. Coefficients and all three variance estimators agree with
+\stcmd{poisson} carrying explicit dummies for both the cell-level terms
+and the absorbed effects to at least \(10^{-6}\).
+
+\section{High-dimensional fixed effects: absorb()}
+
+\label{sec:hdfe}
+
+The \stcmd{absorb(}{\it terms\/}\stcmd{)} option fits the exact model
+with one or more sets of fixed effects without creating dummy variables,
+using iteratively reweighted least squares
+\citep[sec.~2.5]{mccullagh1989} (IRLS) combined with weighted
+alternating-projections demeaning---the approach introduced to Stata by
+\citet{guimaraes2010} and refined by \citet{correia2020}. Each absorbed
+term is a variable or an interaction such as \stcmd{region\#period},
+absorbed as the cross-classification of its variables. Each IRLS
+iteration:
+
+\begin{enumerate}
+\item computes the working variable $z_i = \eta_i + (d_i - \mu_i)/\mu_i$ and weights $\omega_i = \mu_i$, where $\eta_i = \mathbf{x}_i'\bm{\beta}$ is the current linear predictor excluding the offset and $\mu_i = t_i\exp(\eta_i)$;
+\item demeans $z$ and each covariate within the groups of each absorbed term in turn, iterating this Gauss--Seidel cycle to convergence (weighted alternating projections), which is guaranteed to converge for the linear demeaning problem \citep{halperin1962, gaure2013} though at a rate that deteriorates as the absorbed dimensions become more correlated;
+\item regresses the demeaned $\tilde{z}$ on the demeaned $\tilde{\mathbf{X}}$ by weighted least squares to update $\bm{\beta}$; and
+\item recovers the fixed-effect contribution as the complement of the projection and updates $\eta$.
+\end{enumerate}
+
+Convergence is declared when
+\(\max_\ell |\Delta\beta_\ell| / (1 + |\beta_\ell|)\), evaluated at the
+updated coefficient vector, falls below \stcmd{tolerance()} (default
+\(10^{-8}\)). Sort permutations and group boundaries for each absorbed
+term are precomputed once, so every demeaning pass is a single \(O(n)\)
+sweep independent of the number of levels. The implementation is pure
+Mata with no dependencies, and the non-absorbed varlist may include
+factor variables and interactions.
+
+\begin{sloppypar}
+Standard errors come from the partitioned information at convergence:
+$\mathbf{V} = (\tilde{\mathbf{X}}'\bm{\Omega}\tilde{\mathbf{X}})^{-1}$,
+with $\bm{\Omega} = \mathrm{diag}(\omega_i)$, for
+\stcmd{vce(oim)}, the HC1 sandwich with meat
+$\sum_i \mathbf{s}_i \mathbf{s}_i' \cdot n/(n-1)$ and scores
+$\mathbf{s}_i = (d_i - \mu_i)\tilde{\mathbf{x}}_i$ for
+\stcmd{vce(robust)}, and
+the $G/(G-1)$-corrected clustered sandwich with scores summed within
+clusters for \stcmd{vce(cluster)}.  By the
+Frisch--Waugh--Lovell logic applied through the IRLS local linearization, these are not linear approximations but the
+partitioned estimators; given that the fixed effects are solved to
+tolerance, all three match the corresponding dummy-variable
+\stcmd{poisson} output to within $10^{-6}$ (typically $\sim 10^{-8}$),
+which the test suite verifies (section~\ref{sec:validation}).  The model test reported after
+\stcmd{absorb()} is a Wald test of the non-absorbed coefficients,
+$\hat{\bm{\beta}}'\mathbf{V}^{-1}\hat{\bm{\beta}}$, which matches the
+joint Wald test on the dummy-variable model; a naive likelihood-ratio
+test formed from the reported profile log likelihood against a null
+without the fixed effects would not be valid, since the test's degrees of
+freedom would ignore the absorbed effects.
+\end{sloppypar}
+
+Groups of an absorbed term in which no events occur are separated in the
+maximum-likelihood sense---their fixed effects diverge to
+\(-\infty\)---and \stcmd{stpois} drops such observations before
+estimation with a message, mirroring the practice of \stcmd{ppmlhdfe}
+\citep[which treats separation in far greater generality]{correia2020}.
+The header statistics (subjects, failures, time at risk) are computed on
+the final estimation sample after any such drops, so they always agree
+with \stcmd{e(N)} and \stcmd{e(sample)}.
+
+\begin{sloppypar}
+At convergence, the total fixed-effect contribution
+$\hat{\eta}_i - \mathbf{x}_i'\hat{\bm{\beta}}$ is stored in a
+variable---\stcmd{\_stpois\_fe} by default, or a name supplied in the
+\stcmd{d()} option, mirroring \stcmd{ppmlhdfe}'s \stcmd{d()} and the
+\stcmd{fixef()} accessor of \stcmd{fixest}.  \stcmd{predict} adds this
+variable to the linear predictor, so the full set of postestimation
+statistics---linear predictor, expected events, hazard, and
+survival---is available after \stcmd{absorb()} and reproduces the
+corresponding dummy-variable \stcmd{poisson} predictions.
+\end{sloppypar}
+
+\section{The stpois command}
+
+\label{sec:command}
+
+\subsection{Syntax}\label{syntax}
+
+\begin{stsyntax}
+stpois
+    \varlist\
+    \optif\
+    \optin\
+    \optweight\
+    \optional{,
+    irr
+    nolog
+    \underbar{l}evel(\num)
+    \underbar{nocons}tant
+    vce({\it vcetype\/})
+    \underbar{r}obust
+    \underbar{cl}uster(\varname)
+    \underbar{abs}orb({\it terms\/})
+    d({\it newvar\/})
+    \underbar{tol}erance(\num)
+    maxiter(\num)
+    fast
+    {\it poisson\_options}}
+\end{stsyntax}
+
+The data must be \stcmd{stset}; see \stref{stset}. \stcmd{fweight}s,
+\stcmd{iweight}s, and \stcmd{pweight}s are allowed on all paths;
+\stcmd{pweight}s imply robust standard errors, and weighted coefficients
+and standard errors agree with the corresponding weighted
+\stcmd{poisson} model to at least \(10^{-6}\). \stcmd{fast} and
+\stcmd{absorb()} may be combined
+(section~\ref{sec:combo}). The varlist may include
+factor variables and interactions on every path. Variables named in
+\stcmd{absorb()} and, with \stcmd{fast}, the cluster variable must be
+numeric.
+
+\subsection{Options}\label{options}
+
+\hangpara
+\stcmd{irr} reports exponentiated coefficients (incidence-rate ratios,
+equal to hazard ratios in this model).  Display only.
+
+\hangpara
+\stcmd{nolog} suppresses iteration logs.
+
+\hangpara
+\stcmd{level(\num)} sets the confidence level; the default is
+\stcmd{level(95)}.
+
+\hangpara
+\stcmd{noconstant} suppresses the constant term.
+
+\hangpara
+\sloppy
+\stcmd{vce({\it vcetype\/})}, \stcmd{robust}, and
+\stcmd{cluster(\varname)} specify the variance estimator.
+\stcmd{vce(oim)} (the default), \stcmd{vce(robust)}, and
+\stcmd{vce(cluster {\it clustvar\/})} are supported on all paths
+and reproduce the corresponding full \stcmd{poisson} model to at least
+$10^{-6}$; the standard path additionally accepts anything
+\stcmd{poisson} accepts.
+
+\hangpara
+\stcmd{fast} selects cell-accelerated exact estimation; see
+section~\ref{sec:fast}.  With \stcmd{fast}, terms built only from
+factor-variable pieces define the cells and enter at the cell level; at
+least one such term is required.
+
+\hangpara
+\stcmd{absorb({\it terms\/})} absorbs the fixed effects of one or more
+terms, each a variable name or a {\it var1\/}\stcmd{\#}{\it var2\/}
+interaction; see section~\ref{sec:hdfe}.  May be combined with
+\stcmd{fast}.
+
+\hangpara
+\stcmd{d({\it newvar\/})} stores the total fixed-effect contribution
+of \stcmd{absorb()} in {\it newvar\/}; the default is
+\stcmd{\_stpois\_fe}, replaced on each run.  The variable is used by
+\stcmd{predict}.
+
+\hangpara
+\stcmd{tolerance(\num)} and \stcmd{maxiter(\num)} control the iteration
+convergence criterion and cap for \stcmd{absorb()} and \stcmd{fast};
+defaults are \stcmd{1e-8} and \stcmd{100}.
+
+\medskip
+\noindent
+Any remaining options on the standard path are passed to
+\stcmd{poisson}.
+
+\subsection{Stored results}\label{stored-results}
+
+\noindent\stcmd{stpois} stores the following in \stcmd{e()}:
+
+\medskip
+\noindent\textit{Scalars}\nopagebreak
+\begin{tabular}{@{\hspace{1em}}ll@{}}
+\stcmd{e(N)}         & number of observations (sum of the weights with \stcmd{fweight}s)\\
+\stcmd{e(N\_sub)}    & number of subjects\\
+\stcmd{e(N\_fail)}   & number of failures (a weighted sum with \stcmd{fweight}s)\\
+\stcmd{e(risk)}      & total time at risk (a weighted sum with \stcmd{fweight}s)\\
+\stcmd{e(ll)}        & log likelihood (individual-level, comparable across paths)\\
+\stcmd{e(ll\_0)}     & log likelihood, constant-only model (paths without \stcmd{absorb()})\\
+\stcmd{e(chi2)}      & model test statistic\\
+\stcmd{e(df\_m)}     & model degrees of freedom\\
+\stcmd{e(rank)}      & rank of \stcmd{e(V)}\\
+\stcmd{e(k)}         & number of parameters (standard path)\\
+\stcmd{e(ic)}        & number of iterations\\
+\stcmd{e(converged)} & \stcmd{1} if converged, \stcmd{0} otherwise\\
+\stcmd{e(N\_cells)}  & number of cells (\stcmd{fast})\\
+\stcmd{e(N\_clust)}  & number of clusters (with \stcmd{vce(cluster)})\\
+\end{tabular}
+
+\medskip
+\noindent\textit{Macros}\nopagebreak
+\begin{tabular}{@{\hspace{1em}}ll@{}}
+\stcmd{e(cmd)}       & \stcmd{stpois}\\
+\stcmd{e(cmdline)}   & command as typed\\
+\stcmd{e(depvar)}    & \stcmd{\_d} (the failure indicator)\\
+\stcmd{e(t0)}        & \stcmd{\_t0} (the entry-time variable)\\
+\stcmd{e(title)}     & title in estimation output\\
+\stcmd{e(chi2type)}  & \stcmd{LR} or \stcmd{Wald}; type of model test\\
+\stcmd{e(vce)}       & \stcmd{vcetype} specified in \stcmd{vce()}\\
+\stcmd{e(predict)}   & \stcmd{stpois\_p} (program used to implement \stcmd{predict})\\
+\stcmd{e(properties)}& \stcmd{b V}\\
+\stcmd{e(fast)}      & \stcmd{fast}, if the fast path was used\\
+\stcmd{e(cont\_vars)}& individual-level (continuous-involving) terms (\stcmd{fast})\\
+\stcmd{e(cat\_vars)} & cell-defining categorical terms (\stcmd{fast})\\
+\stcmd{e(absorb)}    & absorbed terms (\stcmd{absorb()})\\
+\stcmd{e(fes\_var)}  & name of the stored fixed-effect variable (\stcmd{absorb()})\\
+\stcmd{e(clustvar)}  & name of the cluster variable (with \stcmd{vce(cluster)})\\
+\end{tabular}
+
+\medskip
+\noindent\textit{Matrices}\nopagebreak
+\begin{tabular}{@{\hspace{1em}}ll@{}}
+\stcmd{e(b)}         & coefficient vector\\
+\stcmd{e(V)}         & variance--covariance matrix of the estimators\\
+\end{tabular}
+
+\medskip
+\noindent\textit{Functions}\nopagebreak
+\begin{tabular}{@{\hspace{1em}}ll@{}}
+\stcmd{e(sample)}    & marks the estimation sample\\
+\end{tabular}
+
+All quantities are computed on the final estimation sample (after any
+separation-induced drops on the \stcmd{absorb()} path), so they agree
+with \stcmd{e(N)} and \stcmd{e(sample)}. Paths without absorbed effects
+store a likelihood-ratio model test, with \stcmd{e(chi2type)} set to
+\stcmd{LR}; with \stcmd{absorb()} the Wald test of
+section~\ref{sec:hdfe} is stored, with
+\stcmd{e(chi2type)} set to \stcmd{Wald}. Because every path reports the
+individual-level log likelihood, likelihood-based statistics are
+comparable across paths.
+
+\begin{sloppypar}
+Because \stcmd{e(predict)} is set to \stcmd{stpois\_p}, \stcmd{predict}
+offers the linear predictor (\stcmd{xb}, the default, including the
+log-exposure offset unless \stcmd{nooffset}), predicted numbers of
+events (\stcmd{n}), hazard rates (\stcmd{hazard} or \stcmd{hr}), and
+survival probabilities (\stcmd{survival}).  After \stcmd{absorb()},
+\stcmd{predict} adds the stored fixed-effect contribution to the linear
+predictor, so all four statistics include the absorbed effects and
+match the dummy-variable \stcmd{poisson} predictions.  Postestimation
+commands that operate on the coefficient vector and its variance
+matrix---\stcmd{lincom}, \stcmd{test}, \stcmd{nlcom}, and
+\stcmd{estimates}---work as usual on every path.  \stcmd{margins} is
+available for quantities that are functions of the reported
+coefficients; on the standard and \stcmd{fast} paths it and
+\stcmd{predict} behave exactly as after \stcmd{poisson}, since no stored
+fixed-effect variable is involved.  Note, however, that after
+\stcmd{absorb()} the absorbed fixed-effect contribution enters
+\stcmd{predict} through the stored \stcmd{\_stpois\_fe} variable, which
+\stcmd{margins} holds fixed at its estimated values.  Margins of the
+response therefore condition on the absorbed effects and their
+delta-method standard errors do not propagate the sampling uncertainty
+in those effects, exactly as for any fixed-effect contribution
+recovered post-absorption in \stcmd{ppmlhdfe} or \stcmd{reghdfe}.
+\end{sloppypar}
+
+On the \stcmd{fast} and \stcmd{absorb()} paths, \stcmd{stpois} stores
+the convergence flag \stcmd{e(converged)} and the iteration count
+\stcmd{e(ic)}. If the cap \stcmd{maxiter()} is reached before the
+tolerance in \stcmd{tolerance()} is met, the command still posts the
+last iterate, sets \stcmd{e(converged)} to \(0\), and issues a warning,
+so a noninteractive pipeline can detect the failure by inspecting
+\stcmd{e(converged)}. Cell-level and non-absorbed terms that are
+collinear---including collinearity with the absorbed effects---are
+dropped through a generalized inverse and reflected in \stcmd{e(rank)}.
+Separation is detected only for the absorbed terms, whose all-zero-event
+groups are dropped before estimation
+(section~\ref{sec:hdfe}); separation induced by the
+non-absorbed varlist is not given a targeted drop and instead surfaces
+as nonconvergence with \stcmd{e(converged)} equal to \(0\). In practice,
+if \stcmd{stpois} does not converge, the first diagnostic steps are to
+check \stcmd{e(ic)} against \stcmd{maxiter()}, to inspect whether any
+covariate perfectly predicts the outcome within cells, and---if using
+\stcmd{absorb()}---to verify that every absorbed group contains at least
+one event; \stcmd{ppmlhdfe} \citep{correia2020} provides a more
+comprehensive separation-detection algorithm for the HDFE case.
+
+\section{Examples}
+
+\label{sec:examples}
+
+\subsection{Standard path}\label{standard-path}
+
+The default path reproduces \stcmd{streg, distribution(exponential)}
+exactly (the log likelihoods differ by a constant because \stcmd{streg}
+includes the \(d_i \log t_i\) terms). We load the Stanford heart
+transplant data and \stcmd{stset} them:
+
+\begin{stlog}
+. webuse stan3
+(Heart transplant data)
+{\smallskip}
+. stset t1, failure(died) id(id)
+{\smallskip}
+\oom
+\end{stlog}
+
+\begin{stlog}
+\input{ex_standard.log.tex}\nullskip
+\end{stlog}
+
+\subsection{Absorbing fixed effects}\label{absorbing-fixed-effects}
+
+\stcmd{absorb()} returns the same coefficients and standard errors as
+the explicit dummy-variable model, without estimating the absorbed
+effects:
+
+\begin{stlog}
+\input{ex_absorb.log.tex}\nullskip
+\end{stlog}
+
+\noindent For comparison,
+\stcmd{poisson \_d age posttran i.surgery, exposure(exp)} on the same
+sample gives \stcmd{age} \(=\) .0610952 (SE .014454) and
+\stcmd{posttran} \(=-1.141144\) (SE .2402034): identical to all printed
+digits. The Wald statistic equals the joint test of \stcmd{age} and
+\stcmd{posttran} on the dummy-variable model.
+
+\subsection{Fast estimation on a large
+dataset}\label{fast-estimation-on-a-large-dataset}
+
+The following simulation generates 500,000 subjects in 200 risk cells (4
+education \(\times\) 5 region \(\times\) 10 period), with two continuous
+covariates (\stcmd{age}, \stcmd{income}):
+
+\begin{stlog}
+. clear
+. set obs 500000
+. set seed 20260713
+. gen edu    = ceil(4 * runiform())
+. gen region = ceil(5 * runiform())
+. gen period = ceil(10 * runiform())
+. gen age    = 30 + 20 * runiform()
+. gen income = rnormal(10, 2)
+. gen lambda = exp(-6 + 0.03*age + 0.05*income
+>     + 0.3*(edu==2) + 0.5*(edu==3) - 0.2*(edu==4)
+>     + 0.1*(region==2) - 0.2*(region==3) + 0.2*(period >= 6))
+. gen ptime  = 0.5 + 0.5 * runiform()
+. gen failed = (runiform() < 1 - exp(-lambda * ptime))
+. gen id2    = _n
+. stset ptime, failure(failed) id(id2)
+{\smallskip}
+\oom
+\end{stlog}
+
+\begin{stlog}
+\input{ex_fast.log.tex}\nullskip
+\end{stlog}
+
+\noindent Running the same model on the standard path returns identical
+output---the same coefficients, standard errors, and log likelihood to
+all digits---in five Newton iterations versus a full \stcmd{poisson}
+maximization; the timing comparison is in
+section~\ref{sec:validation}.
+
+\subsection{Interactions}\label{interactions}
+
+All interaction types are accepted with \stcmd{fast}; terms involving a
+continuous piece, such as the \stcmd{edu\#c.age} terms produced by
+\stcmd{c.age\#\#i.edu} below, are estimated at the individual level,
+while the categorical main effects and any categorical\#categorical
+interactions run at the cell level:
+
+\begin{stlog}
+\input{ex_inter.log.tex}\nullskip
+\end{stlog}
+
+\noindent Interacted fixed effects are absorbed with
+\stcmd{absorb(edu\#region)}, which matches \stcmd{poisson} with explicit
+\stcmd{i.edu\#i.region} dummies on coefficients and standard errors.
+
+\subsection{Combining fast with absorb(), and
+predictions}\label{combining-fast-with-absorb-and-predictions}
+
+Returning to the Stanford heart-transplant data, the two acceleration
+mechanisms combine, and both absorption engines store the fixed-effect
+contribution that \stcmd{predict} uses:
+
+\begin{stlog}
+. webuse stan3, clear
+(Heart transplant data)
+{\smallskip}
+. stset t1, failure(died) id(id)
+{\smallskip}
+\oom
+\end{stlog}
+
+\begin{stlog}
+\input{ex_combo.log.tex}\nullskip
+\end{stlog}
+
+\noindent The same coefficients and standard errors are returned by the
+IRLS engine (\stcmd{absorb()} without \stcmd{fast}) and by
+\stcmd{poisson} with explicit \stcmd{i.surgery} dummies. Predictions
+after \stcmd{absorb()} include the absorbed effects:
+
+\begin{stlog}
+\input{ex_predict.log.tex}\nullskip
+\end{stlog}
+
+\subsection{Episode-split workflow}\label{episode-split-workflow}
+
+In applications, the typical sequence splits spells on calendar time,
+age, or duration and then estimates piecewise-constant hazard models:
+
+\begin{stlog}
+. stsplit fu, at(1(1)30)
+. stpois i.fu age income i.edu, irr
+. stpois i.fu age income i.edu, fast
+. stpois age income, absorb(fu edu region) vce(cluster region)
+\end{stlog}
+
+\noindent The last command absorbs three fixed-effect terms
+simultaneously and clusters the standard errors; the full output for
+this workflow is generated by the example script that accompanies the
+package.
+
+\section{Relation to existing commands}
+
+\label{sec:related}
+
+Table~\ref{tab:features} places \stcmd{stpois} among the
+Stata commands that fit closely related models. For one-way fixed
+effects, the official \stcmd{xtpoisson, fe} conditional estimator is
+dependency-free and consistent, but it conditions the fixed effects out
+of the likelihood rather than absorbing them, so it does not extend to
+multi-way fixed effects, does not recover or predict the fixed-effect
+contribution, and its clustered-variance conventions differ from those
+of \stcmd{poisson} with explicit dummies; \stcmd{stpois, absorb()}
+targets exactly the cases---multi-way absorption, recovered effects, and
+\stcmd{poisson}-matching robust and clustered standard errors---in which
+the conditional estimator does not apply. Against \stcmd{ppmlhdfe}, the
+closest command for the absorption path, \stcmd{stpois} adds
+\stcmd{stset} integration and the cell-accelerated fast path while
+requiring only Stata~14 or later and carrying no external
+dependencies, at the cost of a narrower separation-detection scheme
+(section~\ref{sec:hdfe}).
+
+\begin{table}[h!]
+\caption{Feature coverage relative to related commands ($\bullet$~supported
+natively, $\circ$~available only indirectly, e.g.\ through explicit
+dummies or with restrictions, blank~not available)}
+\label{tab:features}
+\begin{center}
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\hline
+\noalign{\smallskip}
+Feature & \stcmd{poisson} & \stcmd{streg} & \stcmd{stcox}
+  & \parbox{1.3cm}{\centering\stcmd{xtpois-}\\\stcmd{son, fe}}
+  & \stcmd{ppmlhdfe} & \stcmd{stpois} \\
+\noalign{\smallskip}
+\hline
+\noalign{\smallskip}
+\stcmd{stset}-native interface   &        &$\bullet$&$\bullet$&        &        &$\bullet$\\
+Survival headers/predict         &        &$\bullet$&$\bullet$&        &        &$\bullet$\\
+One-way fixed effects            &$\circ$ &        &        &$\bullet$&$\bullet$&$\bullet$\\
+Multi-way fixed effects          &$\circ$ &        &        &        &$\bullet$&$\bullet$\\
+Cell-accelerated continuous fit  &        &        &        &        &        &$\bullet$\\
+Robust/cluster VCE               &$\bullet$&$\bullet$&$\bullet$&$\bullet$&$\bullet$&$\bullet$\\
+fw/iw/pw weights                 &$\bullet$&$\bullet$&$\bullet$&$\circ$ &$\bullet$&$\bullet$\\
+Separation detection             &        &        &        &        &$\bullet$&$\circ$ \\
+Recover/predict FE contribution  &        &        &        &        &$\bullet$&$\bullet$\\
+No external dependencies         &$\bullet$&$\bullet$&$\bullet$&$\bullet$&        &$\bullet$\\
+\noalign{\smallskip}
+\hline
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+\section{Validation and performance}
+
+\label{sec:validation}
+
+\subsection{Numerical agreement with streg and
+poisson}\label{numerical-agreement-with-streg-and-poisson}
+
+The standard and fast estimators are algebraically exact in that they
+solve the same likelihood as \stcmd{poisson} with no mathematical
+approximation; the \stcmd{absorb()} estimator converges to the same
+maximum-likelihood optimum to within its specified tolerance.
+``Exact'\,' throughout this article therefore means agreement with the
+\stcmd{streg}/\stcmd{poisson} benchmarks to at least \(10^{-6}\) on
+coefficients \emph{and} all three variance estimators, with observed
+agreement typically on the order of \(10^{-8}\); it does not assert
+bit-for-bit equality of two independent maximizers. The package ships
+with a test suite (\stcmd{test\_stpois.do} and
+\stcmd{test\_fast\_exact.do} in the \stcmd{tests} directory) that runs
+on the \stcmd{stan3} heart-transplant data and on simulated data---not
+on register data, which cannot leave the secure environments that
+motivate the command. Each exactness claim is held to a numerical
+benchmark:
+
+\begin{enumerate}
+\item The \textbf{standard path} matches \stcmd{streg, distribution(exponential)} on every coefficient and standard error to $10^{-6}$.  On the \stcmd{stan3} data, both report $\hat{\beta}_{\rm age} = 0.0605817$ (SE $0.0152350$) and $\hat{\beta}_{\rm posttran} = -1.2852060$ (SE $0.2377048$); the log likelihoods differ only by the fixed $\sum_i d_i \log t_i$ term that \stcmd{streg} includes and the Poisson formulation drops.
+\item \sloppy \textbf{absorb()} matches the explicit dummy-variable \stcmd{poisson} model on coefficients \emph{and} standard errors to $10^{-6}$ (observed agreement is typically on the order of $10^{-8}$), for the observed-information, robust, and cluster--robust variance estimators.  The check covers single fixed effects, interacted fixed effects (\stcmd{edu\#region} against explicit \stcmd{i.edu\#i.region} dummies), multiple simultaneous fixed-effect terms (\stcmd{absorb(edu region period)}), and factor-variable interactions in the varlist.  The Wald model statistic matches the joint test on the dummy-variable model, and a separation test verifies that the header statistics are computed on the post-drop estimation sample.
+\item \textbf{fast} matches the full \stcmd{poisson} model on coefficients, standard errors (observed-information, robust, and clustered), and log likelihood to $10^{-6}$.  The check covers continuous\#continuous, continuous\#categorical, and categorical\#categorical interactions, all-categorical models, and a two-cell setting in which the continuous covariate is constructed to have exactly zero between-cell variation, so that its coefficient is identified purely from within-cell variation.
+\item \textbf{Weights} (frequency, importance, and sampling) on the fast and absorbed paths match the corresponding weighted \stcmd{poisson} model on coefficients and standard errors to $10^{-6}$, with \stcmd{e(N)} following Stata's conventions and \stcmd{pweight}s implying robust standard errors.
+\item \textbf{fast + absorb()} matches \stcmd{poisson} with explicit dummies for both the cell-level terms and the absorbed effects---coefficients and observed-information, robust, and clustered standard errors to $10^{-6}$---including multi-term absorbs and weighted estimation.
+\item \textbf{predict} after \stcmd{absorb()} reproduces the dummy-variable \stcmd{poisson} predictions of expected events, and the hazard equals the exponentiated no-offset linear predictor, on both the IRLS and the fast+absorb engines.
+\end{enumerate}
+
+All tests pass on Stata~19 (BE); the command requires
+version~14. The suite was run on a clean Stata
+installation with no other user-contributed packages present, confirming
+that \stcmd{stpois} draws on no external dependencies.
+
+\subsection{Agreement with ppmlhdfe and with
+collapse+poisson}\label{agreement-with-ppmlhdfe-and-with-collapsepoisson}
+
+\label{sec:headtohead}
+
+Because \stcmd{absorb()} targets the same problem as \stcmd{ppmlhdfe}
+and \stcmd{fast} generalizes the classical collapse-and-fit workflow,
+the accompanying script \stcmd{benchmark\_ppmlhdfe.do} checks
+\stcmd{stpois} directly against both on a \(10^6\)-record design with a
+1,000-level fixed effect. The point estimates are identical: on the
+\stcmd{absorb()} path \stcmd{stpois} and \stcmd{ppmlhdfe} agree on
+\(\hat{\beta}_{\rm age}\) to \(2\times10^{-13}\), and on the combined
+\stcmd{fast}\({}+{}\)\stcmd{absorb()} path to \(1\times10^{-14}\).
+Compared like for like, the standard errors agree to about
+\(3\times10^{-9}\): \stcmd{ppmlhdfe} reports robust standard errors by
+default, as is standard for Poisson pseudo-maximum-likelihood, and these
+match \stcmd{stpois} under \stcmd{vce(robust)} and \stcmd{vce(cluster)}
+to that tolerance. \stcmd{stpois} additionally provides \stcmd{vce(oim)}
+as its default, reproducing \stcmd{poisson}'s classical
+observed-information standard errors---an option \stcmd{ppmlhdfe} does
+not offer (as of version 2.4.1, the version benchmarked here). Against
+the folk baseline of collapsing to cells and fitting weighted
+\stcmd{poisson} on the sums, the \stcmd{fast} path reproduces the
+all-categorical estimates and their standard errors to machine precision
+(\(<10^{-15}\))---as it must, since for this case (no absorbed effects,
+default VCE) \stcmd{fast} \emph{is} that collapse-and-fit workflow,
+performed internally so the user neither writes the \stcmd{collapse} nor
+leaves the \stcmd{stset} data (section~\ref{sec:fast}).
+What \stcmd{fast} adds beyond the manual workflow is support for
+continuous covariates, for which no sufficient cell reduction exists
+(section~\ref{sec:suff}): the command accelerates
+through the cell structure while retaining the continuous terms in the
+individual-level tilted moments. On timing (medians of ten runs, same
+machine as the tables), \stcmd{stpois, absorb()} fits the 1,000-level
+design of Table~\ref{tab:hdfe} in 2.9~ s
+against \stcmd{ppmlhdfe}'s 4.6~ s, and the combined
+\stcmd{fast}\({}+{}\)\stcmd{absorb()} path in 5.0~ s
+against 11.6~ s; \stcmd{stpois} is thus competitive with,
+and here faster than, the established command while adding the
+\stcmd{stset} interface and survival postestimation. On the
+all-categorical design, the internal collapse route fits in
+0.5~ s versus 0.1~ s for hand-collapsing and
+calling \stcmd{poisson}---roughly 5\(\times\) slower---the gap arising
+from \stcmd{stpois}'s fixed overhead of sample marking, term parsing,
+and result posting; what the command adds is the \stcmd{stset} workflow
+and continuous-covariate support without requiring the user to write a
+\stcmd{collapse}.
+
+\subsection{Timing benchmarks}\label{timing-benchmarks}
+
+All timings are medians over ten runs on Stata~19 (BE,
+Apple silicon, warm cache), produced by the benchmark scripts in the
+package repository, which write their results to comma-separated files
+versioned alongside the paper; the tables below reproduce those files.
+Reported speedup ratios are computed from the unrounded median timings,
+so they need not equal the ratio of the rounded cells shown. In every
+comparison the estimates agree across methods to the tolerances
+above---the scripts assert this inside the timing loops---so the tables
+compare identical output.
+
+Table~\ref{tab:mixed} times a mixed model with two
+continuous and 16 categorical parameters (education, region, period),
+comparing \stcmd{streg, distribution(exponential)}, the \stcmd{stpois}
+standard path (a \stcmd{poisson} call), and \stcmd{stpois, fast}.
+
+\begin{table}[h!]
+\caption{Mixed continuous $+$ categorical model, seconds per fit.
+DGP: 200 cells (4 education $\times$ 5 region $\times$ 10 period),
+two continuous covariates (age, income), $\approx 1\%$ event rate.
+Medians of 10 runs, Stata~19 BE, Apple silicon, warm cache.}
+\label{tab:mixed}
+\begin{center}
+\begin{tabular}{rrrrr}
+\hline
+\noalign{\smallskip}
+$n$ & \stcmd{streg} & \stcmd{stpois} (standard) & \stcmd{fast}
+  & speedup vs.\ \stcmd{streg} \\
+\noalign{\smallskip}
+\hline
+\noalign{\smallskip}
+100,000 & 0.37 & 0.34 & 0.11 & 3.3$\times$ \\
+1,000,000 & 2.73 & 2.52 & 1.10 & 2.5$\times$ \\
+5,000,000 & 13.26 & 12.41 & 6.72 & 2.0$\times$ \\
+\noalign{\smallskip}
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Table~\ref{tab:split} times the canonical episode-split
+workflow: 100,000 subjects observed for up to 30 years are split into
+one-year episodes with \stcmd{stsplit} (1,888,654 episode records), and
+a piecewise-constant hazard model with 30 follow-up bands, education,
+region, and two continuous covariates is estimated on the episode file.
+
+\begin{table}[h!]
+\caption{Episode-split workflow (1,888,654 episode records).
+DGP: 100,000 subjects split into annual episodes over up to 30 years;
+piecewise-constant hazard with 30 follow-up bands, education, region,
+and two continuous covariates.
+Medians of 10 runs, Stata~19 BE, Apple silicon, warm cache.}
+\label{tab:split}
+\begin{center}
+\begin{tabular}{lrr}
+\hline
+\noalign{\smallskip}
+Method & Time & speedup vs.\ \stcmd{streg} \\
+\noalign{\smallskip}
+\hline
+\noalign{\smallskip}
+\stcmd{streg, distribution(exponential)} & 5.84 s & --- \\
+\stcmd{stpois} (standard)                & 5.12 s & 1.1$\times$ \\
+\stcmd{stpois, fast}                     & 2.19 s   & 2.7$\times$ \\
+\noalign{\smallskip}
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Table~\ref{tab:allcat} times an all-categorical rate
+model (education \(\times\) region \(\times\) period, 200 cells), the
+case where the sufficiency result of
+section~\ref{sec:suff} lets \stcmd{fast} fit on the
+collapsed cell sums alone through the internal
+\stcmd{collapse}\({}+{}\)\stcmd{poisson} route.
+
+\begin{table}[h!]
+\caption{All-categorical rate model, seconds per fit.
+DGP: 200 cells (4 education $\times$ 5 region $\times$ 10 period),
+no continuous covariates, $\approx 1\%$ event rate.
+Medians of 10 runs, Stata~19 BE, Apple silicon, warm cache.
+For this case \stcmd{fast} internally routes through \stcmd{collapse}$+$\stcmd{poisson}
+on the 200 cell sums; hand-collapsing and calling \stcmd{poisson} directly
+is $\approx 5\times$ faster (section~\ref{sec:headtohead}).}
+\label{tab:allcat}
+\begin{center}
+\begin{tabular}{rrrrr}
+\hline
+\noalign{\smallskip}
+$n$ & \stcmd{streg} & \stcmd{stpois} (standard) & \stcmd{fast}
+  & speedup vs.\ \stcmd{streg} \\
+\noalign{\smallskip}
+\hline
+\noalign{\smallskip}
+1,000,000 & 3.60 & 3.43 & 0.60 & 6.0$\times$ \\
+5,000,000 & 13.05 & 12.06 & 2.86 & 4.6$\times$ \\
+\noalign{\smallskip}
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+In tables~\ref{tab:mixed}--\ref{tab:allcat} the
+complexity analysis implies that the remaining \stcmd{fast} cost is
+dominated by the single aggregating pass over the microdata: the
+per-iteration work is \(O(np^2)\) in the few individual-level columns
+only (Table~\ref{tab:mixed}), and for the
+all-categorical model (Table~\ref{tab:allcat}) it
+reduces to one \stcmd{collapse} plus a \stcmd{poisson} fit on a few
+hundred cells. The gains are therefore largest relative to estimators
+that must pass over the microdata repeatedly, which is what the
+fixed-effects benchmark isolates. Table~\ref{tab:hdfe}
+estimates a model with two continuous covariates and a single fixed
+effect with 1,000 levels on one million observations, comparing
+\stcmd{poisson} with explicit dummies, \stcmd{stpois, absorb()}, and
+\stcmd{ppmlhdfe} on identical output.
+
+\begin{table}[h!]
+\caption{High-dimensional fixed effect: 1,000 levels, $n = 10^6$,
+two continuous covariates.
+\stcmd{ppmlhdfe} reports robust standard errors by default and offers no
+observed-information option (section~\ref{sec:headtohead}).
+Rows 1--3: medians of 10 runs from \texttt{benchmark\_hdfe.do};
+row 4: medians of 10 runs from \texttt{benchmark\_ppmlhdfe.do}
+on the same DGP (robust SEs; \stcmd{stpois} SE omitted for brevity).
+Stata~19 BE, Apple silicon, warm cache.}
+\label{tab:hdfe}
+\begin{center}
+\begin{tabular}{lrrr}
+\hline
+\noalign{\smallskip}
+Method & Time & $\hat{\beta}_{\rm age}$ & SE \\
+\noalign{\smallskip}
+\hline
+\noalign{\smallskip}
+\stcmd{poisson} with 1,000 dummies       & 34.31 s & 0.0266067 & 0.0017000 \\
+\stcmd{stpois, absorb(g)}                & 2.90 s & 0.0266067 & 0.0017000 \\
+\stcmd{ppmlhdfe, absorb(g)}              & 4.59 s  & 0.0266067 & --- \\
+\stcmd{stpois, fast absorb(g)}           & 5.03 s   & \multicolumn{2}{c}{(see section~\ref{sec:headtohead})} \\
+\stcmd{ppmlhdfe, absorb(g)} [fast comp.] & 11.64 s & \multicolumn{2}{c}{} \\
+\noalign{\smallskip}
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Nearly a 12\(\times\) saving at identical output; the dummy-variable
+model's cost grows roughly quadratically in the number of levels while
+the absorption cost grows only linearly, so the complexity analysis
+implies that the gap should widen further in higher-dimensional
+settings. For register applications with \(10^7\) or more episodes,
+detailed period \(\times\) education \(\times\) region structures, and
+high-dimensional nuisance effects---a regime beyond the scale of the
+benchmarks reported here---cell acceleration and fixed-effect absorption
+together may reduce runtimes from minutes to seconds, which would change
+what is practical to do interactively: specification searches, bootstrap
+loops, or estimation inside secure environments with tight session
+limits.
+
+\section{Conclusion}
+
+\stcmd{stpois} packages three things that belong together but have
+required separate workflows: the Poisson formulation of event-history
+models on \stcmd{stset} data, absorption of high-dimensional fixed
+effects without external dependencies, and cell-accelerated estimation
+that retains continuous covariates. The standard and fast paths are
+algebraically exact---they solve the same likelihood as \stcmd{poisson}
+with no mathematical approximation---and the \stcmd{absorb()} path
+converges to the same maximum-likelihood optimum to within its specified
+tolerance; the test suite holds coefficients \emph{and} variance
+estimators, not merely point estimates, to the \stcmd{streg} and
+\stcmd{poisson} benchmarks at \(10^{-6}\) (typically \(\sim 10^{-8}\)),
+and factor-variable interactions are supported throughout, including
+interacted fixed effects. Weights are accepted on every path, the fast
+and absorbed paths can be combined, and predictions after
+\stcmd{absorb()} include the stored fixed-effect contributions. The
+command, its help file, the test suite, and the benchmark scripts are
+available from the author's repository and are installable with
+\stcmd{net install}.
+
+\section{Acknowledgments}
+
+The author thanks the editors and two anonymous referees for their
+comments.
+
+\bibliographystyle{plainnat}
+\bibliography{stpois}
+
+\bigskip\noindent\textbf{About the author.} Andreas Ljungström is a PhD
+student at the Swedish Institute for Social Research (SOFI), Stockholm
+University. His work concerns social stratification broadly, but with a
+special focus on integration in education and early labor market
+outcomes using full-population Swedish register data.
+
+\end{document}

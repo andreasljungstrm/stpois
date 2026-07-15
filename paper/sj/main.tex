@@ -1,0 +1,27 @@
+% main.tex - driver for the Stata Journal version of the stpois article
+%
+% The Stata Press document class
+\documentclass[bib]{statapress}
+
+% Page dimensions
+\usepackage[crop,newcenter,frame]{pagedims}
+
+% The Stata Journal styles
+\usepackage{sj}
+
+% Stata Log listings and useful macros
+\usepackage{stata}
+
+\usepackage{amsmath}
+\usepackage{bm}
+
+% EDITORS: volume number, issue number, month, and year
+\sjsetissue{$vv$}{$ii$}{$mm$}{$yyyy$}
+
+\begin{document}
+
+\input{stpois_sj}
+
+\clearpage
+\end{document}
+% END: main.tex

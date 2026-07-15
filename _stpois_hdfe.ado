@@ -1,15 +1,18 @@
-*! _stpois_hdfe  version 0.6.0  14jul2026
+*! _stpois_hdfe  version 0.8.1  15jul2026
 *! IRLS Poisson with alternating-projections FE absorption (ppmlhdfe-style)
 *! Called by stpois when absorb() is specified. Not intended for direct use.
 program _stpois_hdfe, eclass
     version 14
 
-    syntax varlist(fv ts) [aw iw fw pw], ///
+    syntax varlist(fv ts), ///
         touse(varname)                    ///
         exposure(varname)                 ///
-        absorb(string)                    ///
+        fespec(string)                    ///
+        dvar(string)                      ///
         [tol(real 1e-8)                   ///
         maxiter(integer 100)              ///
+        wvar(varname)                     ///
+        wtype(string)                     ///
         nolog                             ///
         noconstant                        ///
         vce(string)                       ///
@@ -46,23 +49,9 @@ program _stpois_hdfe, eclass
         exit 198
     }
 
-    // --- Separation check ----------------------------------------------------
-    tempvar touse2
-    qui gen byte `touse2' = `touse'
-    if "`clusterv'" != "" markout `touse2' `clusterv'
-
-    foreach aterm of local absorb {
-        local araw = subinstr("`aterm'", "#", " ", .)
-        local araw = subinstr("`araw'", "i.", "", .)
-        tempvar n_ev
-        qui bysort `araw': egen `n_ev' = total(_d * `touse2')
-        qui count if `touse2' & `n_ev' == 0
-        if r(N) > 0 {
-            di as txt "  (absorb(`aterm'): dropped " r(N) " obs in zero-event groups)"
-            qui replace `touse2' = 0 if `n_ev' == 0
-        }
-        drop `n_ev'
-    }
+    // Separation drops and cluster-variable markout are handled by stpois
+    // before dispatch; `touse' is already the final estimation sample
+    local touse2 `touse'
 
     // --- Expand factor variables ----------------------------------------------
     // fvexpand and fvrevar return parallel lists (one entry per expanded
@@ -105,21 +94,23 @@ program _stpois_hdfe, eclass
 
     // --- Run Mata IRLS -------------------------------------------------------
     tempname b_mat V_mat
-    qui count if `touse2'
-    local N = r(N)
+    if "`wtype'" == "fweight" {
+        // Stata convention: N is the sum of frequency weights
+        tempvar wsum
+        qui gen double `wsum' = `wvar' if `touse2'
+        qui summ `wsum' if `touse2', meanonly
+        local N = round(r(sum))
+    }
+    else {
+        qui count if `touse2'
+        local N = r(N)
+    }
 
     scalar _hdfe_ll   = .
     scalar _hdfe_iter = .
     scalar _hdfe_conv = .
-
-    // FE spec for Mata: terms separated by ";", vars within a term by space
-    local fespec ""
-    foreach aterm of local absorb {
-        local araw = subinstr("`aterm'", "#", " ", .)
-        local araw = subinstr("`araw'", "i.", "", .)
-        local fespec "`fespec';`araw'"
-    }
-    local fespec = substr("`fespec'", 2, .)
+    scalar _hdfe_rank = .
+    scalar _hdfe_wald = .
 
     mata: _stpois_hdfe_irls(   ///
         "_d",                  ///
@@ -127,6 +118,9 @@ program _stpois_hdfe, eclass
         "`fespec'",            ///
         "`exposure'",          ///
         "`touse2'",            ///
+        "`wvar'",              ///
+        `N',                   ///
+        "`dvar'",              ///
         `tol',                 ///
         `maxiter',             ///
         "`ctype'",             ///
@@ -136,13 +130,17 @@ program _stpois_hdfe, eclass
         "`V_mat'",             ///
         "_hdfe_ll",            ///
         "_hdfe_iter",          ///
-        "_hdfe_conv"           ///
+        "_hdfe_conv",          ///
+        "_hdfe_rank",          ///
+        "_hdfe_wald"           ///
     )
 
     local ll   = scalar(_hdfe_ll)
     local iter = scalar(_hdfe_iter)
     local conv = scalar(_hdfe_conv)
-    scalar drop _hdfe_ll _hdfe_iter _hdfe_conv
+    local rank = scalar(_hdfe_rank)
+    local wald = scalar(_hdfe_wald)
+    scalar drop _hdfe_ll _hdfe_iter _hdfe_conv _hdfe_rank _hdfe_wald
 
     // --- Fix colnames on b and V ---------------------------------------------
     matrix colnames `b_mat' = `xvars_fv'
@@ -152,26 +150,23 @@ program _stpois_hdfe, eclass
     local ncols = colsof(`b_mat')
     local blankeq
     forvalues i = 1/`ncols' {
-        local blankeq `blankeq' ""
+        local blankeq `blankeq' _
     }
     matrix coleq `b_mat' = `blankeq'
     matrix coleq `V_mat' = `blankeq'
     matrix roweq `V_mat' = `blankeq'
 
-    // --- Null LL for LR chi2 -------------------------------------------------
-    qui poisson _d if `touse2', exposure(`exposure') nolog
-    local ll_0 = e(ll)
-    local chi2 = 2 * (`ll' - `ll_0')
-
     // --- Post results --------------------------------------------------------
+    // The model test is a Wald test of the non-absorbed coefficients,
+    // computed in Mata; an LR test against a null without the fixed
+    // effects would not be valid (df would ignore the absorbed effects).
     ereturn clear
     ereturn post `b_mat' `V_mat', esample(`touse2') obs(`N')
 
     ereturn scalar ll        = `ll'
-    ereturn scalar ll_0      = `ll_0'
-    ereturn scalar chi2      = `chi2'
-    ereturn scalar df_m      = `p'
-    ereturn scalar rank      = `p'
+    ereturn scalar chi2      = `wald'
+    ereturn scalar df_m      = `rank'
+    ereturn scalar rank      = `rank'
     ereturn scalar ic        = `iter'
     ereturn scalar converged = `conv'
     ereturn local  vce       "`ctype'"
@@ -273,6 +268,9 @@ void _stpois_hdfe_irls(
     string scalar fevars_str,
     string scalar evar,
     string scalar tousevar,
+    string scalar wvarname,
+    real   scalar n_stata,
+    string scalar dvarname,
     real   scalar tol,
     real   scalar maxiter,
     string scalar ctype,
@@ -282,11 +280,13 @@ void _stpois_hdfe_irls(
     string scalar V_ret,
     string scalar ll_ret,
     string scalar iter_ret,
-    string scalar conv_ret)
+    string scalar conv_ret,
+    string scalar rank_ret,
+    string scalar wald_ret)
 {
     // Declare all variables at function scope
     real colvector touse_col, idx
-    real colvector y, E
+    real colvector y, E, v
     string rowvector xnames, fes
     real scalar    p, nfe, n
     real matrix    X, M, P
@@ -298,6 +298,7 @@ void _stpois_hdfe_irls(
     real matrix    X_tilde, XtW, XtWX, Xt_prev, H, Hinv, V, S, B, SG, info_c
     real colvector XtWz, lmu, cids, permc
     real scalar    iter, inner, delta, converged, j, k, ll, G_clust
+    real scalar    rank, wald
 
     // --- Load data -----------------------------------------------------------
     touse_col = st_data(., tousevar)
@@ -306,6 +307,7 @@ void _stpois_hdfe_irls(
 
     y  = st_data(idx, yvar)
     E  = st_data(idx, evar)
+    v  = (wvarname != "" ? st_data(idx, wvarname) : J(n, 1, 1))
 
     xnames = tokens(xvars_str)
     p      = cols(xnames)
@@ -329,8 +331,8 @@ void _stpois_hdfe_irls(
     }
 
     // --- Initialize ----------------------------------------------------------
-    sum_y = quadsum(y)
-    sum_E = quadsum(E)
+    sum_y = quadsum(v :* y)
+    sum_E = quadsum(v :* E)
     eta   = J(n, 1, log(sum_y / sum_E))
     b_old = J(p, 1, 0)
     b_new = J(p, 1, 0)
@@ -342,7 +344,7 @@ void _stpois_hdfe_irls(
         mu = exp(eta) :* E
         mu = mu + (mu :< 1e-300) :* 1e-300
         z  = eta + (y - mu) :/ mu
-        w  = mu
+        w  = v :* mu
 
         z_tilde = z
         X_tilde = X
@@ -389,7 +391,7 @@ void _stpois_hdfe_irls(
     // --- VCE: demean X at final weights -------------------------------------
     mu      = exp(eta) :* E
     mu      = mu + (mu :< 1e-300) :* 1e-300
-    w       = mu
+    w       = v :* mu
     X_tilde = X
 
     for (inner = 1; inner <= 200; inner++) {
@@ -405,16 +407,17 @@ void _stpois_hdfe_irls(
     H    = quadcross(X_tilde, w, X_tilde)
     Hinv = invsym(H)
 
-    // Scores: s_i = (y_i - mu_i) * X_tilde_i  (n x p matrix)
-    S = (y - mu) :* X_tilde
+    // Scores: s_i = v_i * (y_i - mu_i) * X_tilde_i  (n x p matrix)
+    S = (v :* (y - mu)) :* X_tilde
 
     if (ctype == "oim") {
         // OIM: V = H^{-1}  (exact)
         V = Hinv
     }
     else if (ctype == "robust") {
-        // HC1: multiply meat by n/(n-1) to match Stata's robust
-        B = quadcross(S, S) * (n / (n - 1))
+        // HC1: multiply meat by N/(N-1) to match Stata's robust, where
+        // N follows Stata's convention (sum of fweights, else # of obs)
+        B = quadcross(S, S) * (n_stata / (n_stata - 1))
         V = Hinv * B * Hinv
     }
     else {
@@ -431,7 +434,19 @@ void _stpois_hdfe_irls(
 
     // --- Log-likelihood ------------------------------------------------------
     lmu = ln(mu)
-    ll  = quadsum(y :* lmu - mu)
+    ll  = quadsum(v :* (y :* lmu - mu))
+
+    // --- Store the fixed-effect contribution for predict ----------------------
+    // eta = X*b + FE at convergence, so the FE part is eta - X*b
+    if (dvarname != "") {
+        st_store(idx, dvarname, eta - X * b_new)
+    }
+
+    // --- Rank and Wald chi2 of the non-absorbed coefficients ------------------
+    // invsym zeroes dropped (collinear) columns, so the rank is the count
+    // of nonzero diagonal entries of H^{-1}
+    rank = sum(diagonal(Hinv) :!= 0)
+    wald = b_new' * invsym(V) * b_new
 
     // --- Return --------------------------------------------------------------
     st_matrix(b_ret, b_new')
@@ -439,6 +454,8 @@ void _stpois_hdfe_irls(
     st_numscalar(ll_ret,   ll)
     st_numscalar(iter_ret, iter)
     st_numscalar(conv_ret, converged)
+    st_numscalar(rank_ret, rank)
+    st_numscalar(wald_ret, wald)
 }
 
 end

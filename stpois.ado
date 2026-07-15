@@ -1,4 +1,4 @@
-*! version 0.6.0  14jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.8.1  15jul2026  Andreas Ljungström, SOFI Stockholm University
 *! Poisson event-history regression for stset data
 program stpois, eclass properties(st)
     version 14
@@ -21,6 +21,7 @@ program stpois, eclass properties(st)
         CLuster(varname)                      ///
         ABSorb(string)                        ///
         FAST                                  ///
+        D(name)                               ///
         TOLerance(real 1e-8)                  ///
         MAXIter(integer 100)                  ///
         *                                     ///
@@ -28,11 +29,6 @@ program stpois, eclass properties(st)
 
     st_is 2 analysis
 
-    // Validate
-    if "`fast'" != "" & `"`absorb'"' != "" {
-        di as error "fast and absorb() may not be combined"
-        exit 198
-    }
     // absorb() accepts variable names and varname#varname interactions
     local absorb_raw ""
     if `"`absorb'"' != "" {
@@ -60,33 +56,94 @@ program stpois, eclass properties(st)
     qui gen double `exposure' = _t - _t0 if `touse'
     qui replace `touse' = 0 if (`exposure' <= 0 | `exposure' >= .) & `touse'
 
-    // Survival summaries (read-only; computed before any collapse)
-    qui count if _d == 1 & `touse'
-    local N_fail = r(N)
-    local idvar `_dta[st_id]'
-    if `"`idvar'"' != "" {
-        // count distinct ids in Mata; levelsof overflows the macro
-        // buffer when the id variable has hundreds of thousands of levels
-        capture confirm string variable `idvar'
-        if _rc {
-            mata: st_local("N_sub", ///
-                strofreal(rows(uniqrows(st_data(., "`idvar'", "`touse'")))))
+    // Weight expression (standard path) and weight variable (Mata engines)
+    local wgtexpr
+    tempvar wv
+    if "`weight'" != "" {
+        local wgtexpr "[`weight'`exp']"
+        qui gen double `wv' `exp' if `touse'
+        markout `touse' `wv'
+        qui replace `touse' = 0 if `wv' <= 0 & `touse'
+        if "`weight'" == "fweight" {
+            capture assert `wv' == int(`wv') if `touse'
+            if _rc {
+                di as error "may not use noninteger frequency weights"
+                exit 401
+            }
+        }
+    }
+
+    // Cluster variable used by the Mata engines: also reachable via
+    // vce(cluster clustvar); mark out its missings like poisson does
+    local eng_clustv "`cluster'"
+    if `"`vce'"' != "" {
+        local vword1 = lower(word(`"`vce'"', 1))
+        if substr("`vword1'", 1, 2) == "cl" local eng_clustv = word(`"`vce'"', 2)
+    }
+    if ("`fast'" != "" | `"`absorb'"' != "") & "`eng_clustv'" != "" {
+        markout `touse' `eng_clustv'
+    }
+
+    // pweights imply robust standard errors on the Mata engines
+    // (poisson handles this itself on the standard path)
+    if "`weight'" == "pweight" & ("`fast'" != "" | `"`absorb'"' != "") ///
+        & `"`vce'"' == "" & "`robust'" == "" & "`cluster'" == "" {
+        local robust robust
+    }
+
+    // Separation: drop observations in absorbed-term groups with no
+    // (weighted) events; their fixed effects diverge to -infinity
+    if `"`absorb'"' != "" {
+        foreach aterm of local absorb {
+            local araw = subinstr("`aterm'", "#", " ", .)
+            local araw = subinstr("`araw'", "i.", "", .)
+            tempvar n_ev
+            if "`weight'" != "" {
+                qui bysort `araw': egen double `n_ev' = total(_d * `wv' * `touse')
+            }
+            else {
+                qui bysort `araw': egen double `n_ev' = total(_d * `touse')
+            }
+            qui count if `touse' & `n_ev' == 0
+            if r(N) > 0 {
+                di as txt "  (absorb(`aterm'): dropped " r(N) " obs in zero-event groups)"
+                qui replace `touse' = 0 if `n_ev' == 0
+            }
+            drop `n_ev'
+        }
+    }
+
+    // FE-contribution variable: filled by the engines at convergence so
+    // that predict can form full linear predictors after absorb()
+    if `"`absorb'"' != "" {
+        if "`d'" != "" {
+            confirm new variable `d'
         }
         else {
-            mata: st_local("N_sub", ///
-                strofreal(rows(uniqrows(st_sdata(., "`idvar'", "`touse'")))))
+            local d "_stpois_fe"
+            capture drop _stpois_fe
         }
+        qui gen double `d' = .
+        label variable `d' "stpois absorb() fixed-effect contribution"
     }
-    else {
-        qui count if `touse'
-        local N_sub = r(N)
+    else if "`d'" != "" {
+        di as error "d() requires absorb()"
+        exit 198
     }
-    qui summ `exposure' if `touse', meanonly
-    local risk = r(sum)
 
-    // Weight expression
-    local wgtexpr
-    if "`weight'" != "" local wgtexpr "[`weight'`exp']"
+    // Options for the Mata engines
+    local engopts
+    if "`weight'" != "" local engopts wvar(`wv') wtype(`weight')
+    if `"`absorb'"' != "" {
+        local fespec ""
+        foreach aterm of local absorb {
+            local araw = subinstr("`aterm'", "#", " ", .)
+            local araw = subinstr("`araw'", "i.", "", .)
+            local fespec "`fespec';`araw'"
+        }
+        local fespec = substr("`fespec'", 2, .)
+        local engopts `engopts' fespec(`fespec') dvar(`d')
+    }
 
     // Common pass-through opts
     local poisopts `log' `constant'
@@ -95,30 +152,38 @@ program stpois, eclass properties(st)
     if "`cluster'"  != "" local poisopts `poisopts' cluster(`cluster')
 
     // ── Dispatch ──────────────────────────────────────────────────────────
-    if `"`absorb'"' != "" {
-        // Pass cluster() explicitly alongside poisopts
-        local hdfe_cluster
-        if "`cluster'" != "" local hdfe_cluster cluster(`cluster')
-        _stpois_hdfe `varlist' `wgtexpr', ///
-            touse(`touse')                 ///
-            exposure(`exposure')           ///
-            absorb(`absorb')               ///
-            tol(`tolerance')               ///
-            maxiter(`maxiter')             ///
-            `hdfe_cluster'                 ///
-            `poisopts' `options'
-        local etitle "Poisson EHA — HDFE (absorb: `absorb')"
-        ereturn local absorb "`absorb'"
-    }
-    else if "`fast'" != "" {
-        _stpois_fast `varlist' `wgtexpr', ///
+    local eng_cluster
+    if "`cluster'" != "" local eng_cluster cluster(`cluster')
+    if "`fast'" != "" {
+        // fast engine, with or without absorbed fixed effects
+        _stpois_fast `varlist', ///
             touse(`touse')                  ///
             exposure(`exposure')            ///
             tol(`tolerance')                ///
             maxiter(`maxiter')              ///
+            `engopts'                       ///
+            `eng_cluster'                   ///
             `poisopts' `options'
-        local etitle "Poisson EHA — fast (cell-accelerated exact MLE)"
+        if `"`absorb'"' != "" {
+            local etitle "Poisson EHA — fast + HDFE (absorb: `absorb')"
+            ereturn local absorb "`absorb'"
+        }
+        else {
+            local etitle "Poisson EHA — fast (cell-accelerated exact MLE)"
+        }
         ereturn local fast "fast"
+    }
+    else if `"`absorb'"' != "" {
+        _stpois_hdfe `varlist', ///
+            touse(`touse')                 ///
+            exposure(`exposure')           ///
+            tol(`tolerance')               ///
+            maxiter(`maxiter')             ///
+            `engopts'                      ///
+            `eng_cluster'                  ///
+            `poisopts' `options'
+        local etitle "Poisson EHA — HDFE (absorb: `absorb')"
+        ereturn local absorb "`absorb'"
     }
     else {
         // ── Standard path ─────────────────────────────────────────────────
@@ -141,9 +206,10 @@ program stpois, eclass properties(st)
         matrix `V' = e(V)
 
         local ncols = colsof(`b')
+        // "_" is the null equation; assigning "" leaves eq names unchanged
         local blankeq
         forvalues i = 1/`ncols' {
-            local blankeq `blankeq' ""
+            local blankeq `blankeq' _
         }
         matrix coleq `b' = `blankeq'
         matrix coleq `V' = `blankeq'
@@ -164,6 +230,49 @@ program stpois, eclass properties(st)
     }
 
     // ── Survival scalars (common) ──────────────────────────────────────────
+    // Computed on the final estimation sample, so the header agrees with
+    // e(N)/e(sample) even after absorb() drops zero-event groups
+    tempvar esamp
+    qui gen byte `esamp' = e(sample)
+    if "`weight'" == "fweight" {
+        // frequency weights scale failures and time at risk (as in streg)
+        tempvar wfail
+        qui gen double `wfail' = `wv' * _d if `esamp'
+        qui summ `wfail' if `esamp', meanonly
+        local N_fail = r(sum)
+    }
+    else {
+        qui count if _d == 1 & `esamp'
+        local N_fail = r(N)
+    }
+    local idvar `_dta[st_id]'
+    if `"`idvar'"' != "" {
+        // count distinct ids in Mata; levelsof overflows the macro
+        // buffer when the id variable has hundreds of thousands of levels
+        capture confirm string variable `idvar'
+        if _rc {
+            mata: st_local("N_sub", ///
+                strofreal(rows(uniqrows(st_data(., "`idvar'", "`esamp'")))))
+        }
+        else {
+            mata: st_local("N_sub", ///
+                strofreal(rows(uniqrows(st_sdata(., "`idvar'", "`esamp'")))))
+        }
+    }
+    else {
+        qui count if `esamp'
+        local N_sub = r(N)
+    }
+    if "`weight'" == "fweight" {
+        tempvar wrisk
+        qui gen double `wrisk' = `wv' * `exposure' if `esamp'
+        qui summ `wrisk' if `esamp', meanonly
+        local risk = r(sum)
+    }
+    else {
+        qui summ `exposure' if `esamp', meanonly
+        local risk = r(sum)
+    }
     ereturn scalar N_fail = `N_fail'
     ereturn scalar N_sub  = `N_sub'
     ereturn scalar risk   = `risk'
@@ -176,7 +285,15 @@ program stpois, eclass properties(st)
     ereturn local depvar    "_d"
     ereturn local dead      "_d"
     ereturn local t0        "_t0"
-    ereturn local chi2type  "LR"
+    // absorb() reports a Wald test of the non-absorbed coefficients; an LR
+    // test against a null without the fixed effects would not be valid
+    if `"`absorb'"' != "" {
+        ereturn local chi2type "Wald"
+        ereturn local fes_var  "`d'"
+    }
+    else {
+        ereturn local chi2type "LR"
+    }
     ereturn local title     "`etitle'"
     ereturn local properties "b V"
 
@@ -197,8 +314,9 @@ program Display
     di as txt "No. of failures = " as res %12.0fc e(N_fail)
 
     if e(chi2) < . {
+        local c2t = cond(`"`e(chi2type)'"' == "", "LR", `"`e(chi2type)'"')
         di as txt "Time at risk    = " as res %12.4g e(risk)                ///
-            _col(49) as txt "LR chi2(" as res e(df_m) as txt ")"            ///
+            _col(49) as txt "`c2t' chi2(" as res e(df_m) as txt ")"         ///
             _col(65) "=" as res %9.2f e(chi2)
         di as txt "Log likelihood  = " as res %12.5f e(ll)                  ///
             _col(49) as txt "Prob > chi2"                                    ///

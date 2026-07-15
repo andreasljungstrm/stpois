@@ -1,0 +1,35 @@
+% sj-template.tex -- pandoc template producing an SJ article fragment
+% Quarto/pandoc renders stpois_sj.qmd to stpois_sj.tex via this template.
+
+\inserttype[st0001]{article}
+\author{A. Ljungstr\"om}{%
+  Andreas Ljungstr\"om\\
+  Swedish Institute for Social Research (SOFI)\\
+  Stockholm University\\
+  Stockholm, Sweden\\
+  andreas.ljungstrom@sofi.su.se
+}
+\title[$title-short$]{%
+  $title$}
+\maketitle
+
+\begin{abstract}
+$abstract$
+
+\keywords{$keywords$}
+\end{abstract}
+
+% pandoc emits \tightlist for compact lists; define as no-op so the
+% SJ list defaults apply
+\providecommand{\tightlist}{}
+
+$body$
+
+\bibliographystyle{sj}
+\bibliography{stpois}
+
+\begin{aboutauthors}
+$about-authors$
+\end{aboutauthors}
+
+\endinput

@@ -1,0 +1,78 @@
+% arxiv-template.tex -- pandoc template for the arXiv/preprint version.
+%
+% Consumed by: quarto render stpois_sj.qmd --to latex \
+%   --template ../arxiv/arxiv-template.tex --output stpois_arxiv.tex
+%
+% Defines Stata Journal macro compatibility so the body produced from
+% stpois_sj.qmd compiles without the SJ style files.
+
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage[round,authoryear]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+% ── Stata Journal macro layer ─────────────────────────────────────────────
+% Load StataCorp's official stata.sty (same file the SJ build uses) so the
+% Stata log tables, box-drawing rules (\HLI/\TOPT/\PLUS/\BOTT/\VBAR),
+% command-syntax boxes (stsyntax), and helper macros (\stcmd, \stref,
+% \varlist, \optional, \num, \oom, \hangpara, ...) render identically to the
+% Stata Journal PDF instead of being stubbed out.
+\usepackage{stata}
+
+% Article tag (SJ-only macro, used in the keywords block; not in stata.sty)
+\def\inserttag{stpois}
+
+% Pandoc compact-list boilerplate
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% ── Document metadata ─────────────────────────────────────────────────────
+
+\title{$title$}
+
+\author{%
+$for(author)$
+  $author.name$\\
+  \small$author.affiliation$\\
+  \small\texttt{$author.email$}%
+  $sep$\and%
+$endfor$
+}
+
+\date{$date$}
+
+% ── Document body ─────────────────────────────────────────────────────────
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent $abstract$
+\end{abstract}
+
+$if(keywords)$
+\medskip\noindent\textbf{Keywords:} $keywords$
+$endif$
+
+\bigskip
+
+$body$
+
+\bibliographystyle{plainnat}
+\bibliography{stpois}
+
+$if(about-authors)$
+\bigskip\noindent\textbf{About the author.} $about-authors$
+$endif$
+
+\end{document}

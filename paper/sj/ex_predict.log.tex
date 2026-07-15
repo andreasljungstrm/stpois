@@ -1,0 +1,25 @@
+. stpois age posttran, absorb(surgery) nolog
+  (HDFE: 6 IRLS iterations, converged=1)
+{\smallskip}
+Poisson EHA {\EMDASH} HDFE (absorb: surgery)
+{\smallskip}
+No. of subjects =          103                  Number of obs   =      172
+No. of failures =           75
+Time at risk    =        31938                  Wald chi2(2)    =    35.17
+Log likelihood  =   -227.61949                  Prob > chi2     =   0.0000
+{\smallskip}
+\HLI{13}{\TOPT}\HLI{64}
+          _d {\VBAR} Coefficient  Std. err.      z    P>|z|     [95\% conf. interval]
+\HLI{13}{\PLUS}\HLI{64}
+         age {\VBAR}   .0610952    .014454     4.23   0.000     .0327659    .0894244
+    posttran {\VBAR}  -1.141144   .2402034    -4.75   0.000    -1.611934   -.6703538
+\HLI{13}{\BOTT}\HLI{64}
+{\smallskip}
+. predict double haz, hazard
+{\smallskip}
+. summarize haz
+{\smallskip}
+    Variable {\VBAR}        Obs        Mean    Std. dev.       Min        Max
+\HLI{13}{\PLUS}\HLI{57}
+         haz {\VBAR}        172    .0050208    .0039522   .0003224   .0212179
+{\smallskip}

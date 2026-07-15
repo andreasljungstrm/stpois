@@ -1,0 +1,11 @@
+comparison,flavor,n,metric,stpois,other,absdiff,stpois_med_s,other_med_s
+absorb_vs_ppmlhdfe,IC,1000000,b_age,0.0266067024,0.0266067024,1.671e-13,,
+absorb_vs_ppmlhdfe,IC,1000000,se_age_robust,0.0016851744,0.0016851717,2.744e-09,,
+absorb_vs_ppmlhdfe,IC,1000000,se_age_cluster,0.0017374270,0.0017374242,2.800e-09,,
+absorb_vs_ppmlhdfe,IC,1000000,time,,,,2.7020,4.7895
+fastabsorb_vs_ppmlhdfe,IC,1000000,b_age,0.0283327383,0.0283327383,1.390e-14,,
+fastabsorb_vs_ppmlhdfe,IC,1000000,se_age_robust,0.0015417233,0.0015417227,6.392e-10,,
+fastabsorb_vs_ppmlhdfe,IC,1000000,time,,,,5.0345,11.6365
+fast_vs_collapse,IC,1000000,b_edu3,0.4891081050,0.4891081050,0.000e+00,,
+fast_vs_collapse,IC,1000000,se_edu3,0.0558364954,0.0558364954,0.000e+00,,
+fast_vs_collapse,IC,1000000,time,,,,0.4975,0.0990

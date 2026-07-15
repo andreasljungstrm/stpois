@@ -1,6 +1,7 @@
-*! _stpois_fast  version 0.6.0  14jul2026
+*! _stpois_fast  version 0.8.1  15jul2026
 *! Exact Poisson EHA accelerated through the cell structure of the
-*! categorical covariates.
+*! categorical covariates, with optional absorbed fixed effects and
+*! weights.
 *!
 *! Terms in the varlist are classified as cell-level (built only from
 *! factor-variable pieces, including factor#factor interactions) or
@@ -9,25 +10,43 @@
 *! iterations compute the score and Hessian from exponentially tilted
 *! within-cell moments of the individual-level columns: one O(n p^2)
 *! pass over the microdata per iteration, all remaining algebra on the
-*! J cells. When every term is cell-level, iterations run entirely on
-*! the collapsed (events, exposure) cell sums at O(J) per iteration.
+*! J cells. When every term is cell-level, nothing is absorbed, and the
+*! default observed-information VCE is requested, estimation is routed
+*! to Stata's compiled collapse + poisson on the (events, exposure)
+*! cell sums -- exact by sufficiency and faster than iterating in Mata.
+*! Robust/cluster VCEs keep the Mata cell-sum Newton, since they need
+*! the per-observation microdata scores.
 *!
-*! Data handling is done in a single Mata pass with one sort:
-*! group structures come from order() plus running-sum segment
-*! aggregation, with no preserve/collapse round-trips.
+*! With fespec() (stpois option absorb()), the fixed effects are
+*! concentrated out of the likelihood by closed-form Gauss-Seidel
+*! updates -- for Poisson, the profile-maximizing effect of group g is
+*! alpha_g = ln(sum_g w*d / sum_g w*mu) -- iterated to convergence
+*! inside every Newton step (the approach of R's fixest). The VCE then
+*! comes from the Frisch-Waugh-Lovell partitioned information: all
+*! design columns are weighted-demeaned within the absorbed groups and
+*! the sandwich is built on the demeaned columns, exactly as in the
+*! ppmlhdfe approach.
 *!
-*! Estimates are the exact individual-level MLE: coefficients, log
-*! likelihood, and OIM/robust/cluster VCEs match poisson numerically.
+*! Weights (fw/iw/pw) multiply the likelihood contributions; pweights
+*! are given robust standard errors by the caller.
+*!
+*! Estimates are the exact (weighted) individual-level MLE:
+*! coefficients, log likelihood, and OIM/robust/cluster VCEs match
+*! poisson numerically.
 *!
 *! Called by stpois when fast is specified. Not intended for direct use.
 program _stpois_fast, eclass
     version 14
 
-    syntax varlist(fv ts) [aw iw fw pw], ///
+    syntax varlist(fv ts), ///
         touse(varname)                    ///
         exposure(varname)                 ///
         [tol(real 1e-8)                   ///
         maxiter(integer 100)              ///
+        wvar(varname)                     ///
+        wtype(string)                     ///
+        fespec(string)                    ///
+        dvar(string)                      ///
         nolog                             ///
         noconstant                        ///
         vce(string)                       ///
@@ -69,7 +88,9 @@ program _stpois_fast, eclass
         }
     }
 
-    local hascons = cond("`constant'" == "noconstant", 0, 1)
+    // Absorbed fixed effects soak up the constant
+    local hasfe = (`"`fespec'"' != "")
+    local hascons = cond("`constant'" == "noconstant" | `hasfe', 0, 1)
 
     // ── Classify expanded terms: cell-level vs individual-level ────────────
     // Each expanded term is a product of pieces (split on #). A piece that
@@ -139,15 +160,103 @@ program _stpois_fast, eclass
     if "`wterms'" == "" {
         di as error "fast requires at least one categorical term (i.varname)"
         di as error "categorical terms define the cells over which computation is accelerated"
+        if `hasfe' di as error "(for models with only absorbed fixed effects, use absorb() without fast)"
         exit 198
     }
 
     local p : word count `xterms'
     local k : word count `wterms'
 
-    // ── Count obs ──────────────────────────────────────────────────────────
+    // ── Count obs (Stata convention: sum of fweights, else # of obs) ──────
     qui count if `touse'
     local N_orig = r(N)
+    local N_stata = `N_orig'
+    if "`wtype'" == "fweight" {
+        tempvar wsum
+        qui gen double `wsum' = `wvar' if `touse'
+        qui summ `wsum' if `touse', meanonly
+        local N_stata = round(r(sum))
+    }
+
+    // ── Purely categorical model: native collapse + poisson ───────────────
+    // When every term is cell-level (p == 0), no fixed effects are absorbed,
+    // and the default observed-information VCE is requested, the sufficiency
+    // of the cell sums (D_j, T_j) makes estimation on the collapsed cells
+    // exact -- coefficients, standard errors, and the log likelihood all
+    // reproduce the microdata poisson. Stata's compiled collapse + poisson
+    // on a few hundred cells is faster than iterating in Mata over the
+    // microdata, so this case is routed there. Robust and cluster-robust
+    // VCEs need the per-observation microdata scores (the cell residual sum
+    // squared is not the sum of squared residuals), so they fall through to
+    // the Mata engine below.
+    if (`p' == 0 & !`hasfe' & "`ctype'" == "oim") {
+        if "`nolog'" == "" {
+            di as txt "  (fast) `k' cell-level parameters, collapse + poisson..."
+        }
+        tempvar dltv
+        qui gen double `dltv' = _d * ln(`exposure') if `touse'
+        tempname b_c V_c dlogt sumD sumT llc
+        preserve
+            qui keep if `touse'
+            local cwgt ""
+            if "`wvar'" != "" local cwgt "[`wtype' = `wvar']"
+            collapse (sum) _d `exposure' `dltv' `cwgt', by(`catnames')
+            local N_cells = _N
+            qui summ `dltv', meanonly
+            scalar `dlogt' = r(sum)
+            qui summ _d, meanonly
+            scalar `sumD' = r(sum)
+            qui summ `exposure', meanonly
+            scalar `sumT' = r(sum)
+            qui poisson _d `varlist', exposure(`exposure') `constant' nolog
+            matrix `b_c' = e(b)
+            matrix `V_c' = e(V)
+            local df_m = e(df_m)
+            local rank = e(rank)
+            local iter = e(ic)
+            local conv = e(converged)
+            // individual-level log likelihood from the cell linear predictors
+            // (etac_j = x_j'beta, no offset): ll = sum d_i ln t_i
+            //   + sum_j D_j etac_j - sum_j T_j exp(etac_j)
+            tempvar etac
+            qui predict double `etac', xb nooffset
+            mata: st_numscalar("`llc'",                                  ///
+                st_numscalar("`dlogt'")                                  ///
+              + quadsum(st_data(., "_d") :* st_data(., "`etac'"))        ///
+              - quadsum(st_data(., "`exposure'") :* exp(st_data(., "`etac'"))))
+        restore
+        local ll   = scalar(`llc')
+        local a0   = ln(scalar(`sumD') / scalar(`sumT'))
+        local ll_0 = scalar(`dlogt') + `a0' * scalar(`sumD') - scalar(`sumD')
+
+        // strip equation names, then post exactly as the Mata path does
+        local ncols = colsof(`b_c')
+        local blankeq
+        forvalues i = 1/`ncols' {
+            local blankeq `blankeq' _
+        }
+        matrix coleq `b_c' = `blankeq'
+        matrix coleq `V_c' = `blankeq'
+        matrix roweq `V_c' = `blankeq'
+
+        ereturn clear
+        ereturn post `b_c' `V_c', esample(`touse') obs(`N_stata')
+        ereturn scalar ll        = `ll'
+        ereturn scalar ll_0      = `ll_0'
+        ereturn scalar chi2      = 2 * (`ll' - `ll_0')
+        ereturn scalar df_m      = `df_m'
+        ereturn scalar rank      = `rank'
+        ereturn scalar ic        = `iter'
+        ereturn scalar converged = `conv'
+        ereturn scalar N_cells   = `N_cells'
+        ereturn local  vce       "oim"
+        ereturn local  cont_vars ""
+        ereturn local  cat_vars  "`catnames'"
+        if "`nolog'" == "" {
+            di as txt "  (fast) `N_orig' obs, `N_cells' cells (collapse + poisson)"
+        }
+        exit
+    }
 
     // ── Estimate in Mata ───────────────────────────────────────────────────
     if "`nolog'" == "" {
@@ -162,11 +271,16 @@ program _stpois_fast, eclass
     scalar _stpf_nclu  = .
     scalar _stpf_rank  = .
     scalar _stpf_J     = .
+    scalar _stpf_wald  = .
 
     mata: _stpois_fast_est(     ///
         "_d",                   ///
         "`exposure'",           ///
         "`touse'",              ///
+        "`wvar'",               ///
+        `N_stata',              ///
+        "`fespec'",             ///
+        "`dvar'",               ///
         "`contnames'",          ///
         "`catnames'",           ///
         "`xspec'",              ///
@@ -185,7 +299,8 @@ program _stpois_fast, eclass
         "_stpf_conv",           ///
         "_stpf_nclu",           ///
         "_stpf_rank",           ///
-        "_stpf_J"               ///
+        "_stpf_J",              ///
+        "_stpf_wald"            ///
     )
 
     local ll      = scalar(_stpf_ll)
@@ -195,7 +310,9 @@ program _stpois_fast, eclass
     local n_clust = scalar(_stpf_nclu)
     local rank    = scalar(_stpf_rank)
     local N_cells = scalar(_stpf_J)
-    scalar drop _stpf_ll _stpf_ll0 _stpf_iter _stpf_conv _stpf_nclu _stpf_rank _stpf_J
+    local wald    = scalar(_stpf_wald)
+    scalar drop _stpf_ll _stpf_ll0 _stpf_iter _stpf_conv _stpf_nclu ///
+        _stpf_rank _stpf_J _stpf_wald
 
     // ── Names, chi2, post ──────────────────────────────────────────────────
     local bnames `xterms' `wterms'
@@ -207,20 +324,30 @@ program _stpois_fast, eclass
     local ncols = colsof(`b_mat')
     local blankeq
     forvalues i = 1/`ncols' {
-        local blankeq `blankeq' ""
+        local blankeq `blankeq' _
     }
     matrix coleq `b_mat' = `blankeq'
     matrix coleq `V_mat' = `blankeq'
     matrix roweq `V_mat' = `blankeq'
 
-    local df_m = `rank' - `hascons'
-    local chi2 = 2 * (`ll' - `ll_0')
+    if `hasfe' {
+        // Wald test of all reported coefficients (an LR test against a
+        // null without the fixed effects would not be valid)
+        local df_m = `rank'
+        local chi2 = `wald'
+    }
+    else {
+        local df_m = `rank' - `hascons'
+        local chi2 = 2 * (`ll' - `ll_0')
+    }
 
     ereturn clear
-    ereturn post `b_mat' `V_mat', esample(`touse') obs(`N_orig')
+    ereturn post `b_mat' `V_mat', esample(`touse') obs(`N_stata')
 
     ereturn scalar ll        = `ll'
-    ereturn scalar ll_0      = `ll_0'
+    if !`hasfe' {
+        ereturn scalar ll_0  = `ll_0'
+    }
     ereturn scalar chi2      = `chi2'
     ereturn scalar df_m      = `df_m'
     ereturn scalar rank      = `rank'
@@ -271,6 +398,17 @@ real matrix _stpf_segsum(real matrix Ap, real colvector ends)
         }
     }
     return(out)
+}
+
+// Segment boundaries of a sorted key matrix as an (starts, ends) matrix,
+// the same format as panelsetup(). Used where the result must live in a
+// pointer (a function result gets its own storage, unlike a reused local).
+real matrix _stpf_panels(real matrix Ks)
+{
+    real colvector starts, ends
+
+    _stpf_segments(Ks, starts, ends)
+    return((starts, ends))
 }
 
 // Segment boundaries of a sorted key matrix: rows where any key column
@@ -326,10 +464,80 @@ real matrix _stpf_build(string scalar spec_s,
     return(OUT)
 }
 
+// 0/1 start flags of length n given segment start positions
+real colvector _stpf_startflags(real scalar n, real colvector starts)
+{
+    real colvector f
+
+    f         = J(n, 1, 0)
+    f[starts] = J(rows(starts), 1, 1)
+    return(f)
+}
+
+// Weighted within-group demeaning using a precomputed sort permutation
+// and segment ends: one O(n) pass per call.
+real colvector _stpf_wdemean(real colvector x,
+                             real colvector w,
+                             real colvector perm,
+                             real colvector ends)
+{
+    real colvector xp, wp, wsum, wxsum, gmean, res, out, gidx, starts
+    real scalar    nseg, n
+
+    n     = rows(x)
+    xp    = x[perm]
+    wp    = w[perm]
+    nseg  = rows(ends)
+    wsum  = _stpf_segsum(wp, ends)
+    wxsum = _stpf_segsum(wp :* xp, ends)
+    gmean = wxsum :/ (wsum + (wsum :== 0))
+    // group index of each sorted row
+    starts = J(nseg, 1, 1)
+    if (nseg > 1) starts[|2 \ nseg|] = ends[|1 \ nseg - 1|] :+ 1
+    gidx = runningsum(_stpf_startflags(n, starts))
+    res  = xp - gmean[gidx]
+    out       = x
+    out[perm] = res
+    return(out)
+}
+
+
+
+// Closed-form Gauss-Seidel update of the absorbed fixed effects given the
+// covariate part of the linear predictor: for Poisson the profile optimum
+// of group g is alpha_g = ln(sum_g v*d / sum_g v*mu), iterated over the
+// absorbed terms until stable.
+real colvector _stpf_feupdate(real colvector fe0, real colvector base,
+                              real colvector v,   real colvector t,
+                              real matrix Pf,
+                              pointer(real matrix)    rowvector infosf,
+                              pointer(real colvector) rowvector VDf,
+                              real matrix Gidx, real scalar nfe,
+                              real scalar tol)
+{
+    real colvector fe, vmu, adj
+    real scalar    sweep, kk, maxadj
+
+    fe = fe0
+    for (sweep = 1; sweep <= 200; sweep++) {
+        maxadj = 0
+        for (kk = 1; kk <= nfe; kk++) {
+            vmu = v :* t :* exp(base + fe)
+            adj = ln(*VDf[kk] :/ _stpf_segsum(
+                vmu[Pf[., kk]], (*infosf[kk])[., 2]))
+            fe  = fe + adj[Gidx[., kk]]
+            if (max(abs(adj)) > maxadj) maxadj = max(abs(adj))
+        }
+        if (maxadj < tol) break
+    }
+    return(fe)
+}
 
 void _stpois_fast_est(
     string scalar dvar,       string scalar evar,
     string scalar tousevar,
+    string scalar wvarname,   real scalar n_stata,
+    string scalar fespec_s,   string scalar dfevar,
     string scalar contnames_s, string scalar catnames_s,
     string scalar xspec_s,     string scalar wspec_s,
     string scalar cellcols_s,
@@ -340,23 +548,33 @@ void _stpois_fast_est(
     string scalar ll_ret,  string scalar ll0_ret,
     string scalar iter_ret, string scalar conv_ret,
     string scalar nclu_ret, string scalar rank_ret,
-    string scalar J_ret)
+    string scalar J_ret,    string scalar wald_ret)
 {
-    real colvector idx, d, t, cell, perm, starts, ends, reps
+    real colvector idx, d, t, v, vd, vt, cell, perm, starts, ends, reps
     real matrix    V, C, X, W, Xp, Crep
     real colvector Dj, Tj, dlt
     real scalar    n, p, k, q, J_, iter, halv
     real colvector theta, step, theta_new, etac, eta, mu, mup, r, Mj, Rj, s
-    real matrix    MX, H, Hinv, VV, S, B, SG
+    real matrix    MX, H, Hinv, VV, S, B, SG, Xfull, Xt, Xt_prev
     real scalar    ll, ll_new, ll0, a0, sum_d, sum_t, converged, delta_c
-    real scalar    rank, G_clust, dlogt
+    real scalar    rank, G_clust, dlogt, wald
     real colvector cids, permc, starts_c, ends_c
     real colvector cellcols
+    string rowvector fes
+    real scalar    nfe, kk, sweep, maxadj, inner
+    real matrix    Pf, M, Gidx
+    real colvector prm, fe, fe_try, base, vmu, adj
+    pointer(real matrix)    rowvector infosf
+    pointer(real colvector) rowvector VDf
+    real scalar    jj
 
     idx = selectindex(st_data(., tousevar))
     n   = rows(idx)
     d   = st_data(idx, dvar)
     t   = st_data(idx, evar)
+    v   = (wvarname != "" ? st_data(idx, wvarname) : J(n, 1, 1))
+    vd  = v :* d
+    vt  = v :* t
 
     V = (contnames_s != "" ? st_data(idx, tokens(contnames_s)) : J(n, 0, .))
     C = (catnames_s  != "" ? st_data(idx, tokens(catnames_s))  : J(n, 0, .))
@@ -372,8 +590,30 @@ void _stpois_fast_est(
     reps     = perm[starts]
     Crep     = C[reps, .]
 
-    Dj = _stpf_segsum(d[perm], ends)
-    Tj = _stpf_segsum(t[perm], ends)
+    Dj = _stpf_segsum(vd[perm], ends)
+    Tj = _stpf_segsum(vt[perm], ends)
+
+    // ── Absorbed fixed effects: per-term sort, segments, group index,
+    //    and (constant) weighted event sums ────────────────────────────────
+    fes = tokens(fespec_s, ";")
+    fes = select(fes, fes :!= ";")
+    nfe = cols(fes)
+    fe  = J(n, 1, 0)
+    if (nfe > 0) {
+        Pf     = J(n, nfe, .)
+        Gidx   = J(n, nfe, .)
+        infosf = J(1, nfe, NULL)
+        VDf    = J(1, nfe, NULL)
+        for (kk = 1; kk <= nfe; kk++) {
+            M          = st_data(idx, tokens(fes[kk]))
+            prm        = order(M, (1..cols(M)))
+            Pf[., kk]  = prm
+            infosf[kk] = &_stpf_panels(M[prm, .])
+            Gidx[prm, kk] = runningsum(
+                _stpf_startflags(n, (*infosf[kk])[., 1]))
+            VDf[kk]    = &_stpf_segsum(vd[prm], (*infosf[kk])[., 2])
+        }
+    }
 
     // ── Designs ────────────────────────────────────────────────────────────
     X = _stpf_build(xspec_s, V, C)               // n × p (p may be 0)
@@ -384,44 +624,81 @@ void _stpois_fast_est(
     q = p + k
 
     dlt   = ln(t :+ 1e-300)
-    dlogt = quadsum(d :* dlt)
+    dlogt = quadsum(vd :* dlt)
 
     // ── Null model (exposure + constant) ───────────────────────────────────
-    sum_d = quadsum(d)
-    sum_t = quadsum(t)
+    sum_d = quadsum(vd)
+    sum_t = quadsum(vt)
     a0    = ln(sum_d / sum_t)
     ll0   = dlogt + a0 * sum_d - sum_d
 
-    // ── Newton ─────────────────────────────────────────────────────────────
+    // ── Newton, with FEs concentrated out by Gauss-Seidel ─────────────────
     theta = J(q, 1, 0)
     if (hascons) theta[q] = a0
     converged = 0
     ll = .
 
     if (p > 0) Xp = X[perm, .]
+    // With absorbed FEs the theta update is Newton on the profile
+    // likelihood: design columns are weighted-demeaned within the FE
+    // groups (Frisch-Waugh-Lovell) and the step uses the demeaned score
+    // and information. A conditional-Hessian step would zigzag whenever
+    // the covariates are correlated with the FE space.
+    if (nfe > 0) Xfull = (p > 0 ? (X, W[cell, .]) : W[cell, .])
 
     for (iter = 1; iter <= maxiter; iter++) {
         etac = W * theta[|p + 1 \ q|]
-        if (p > 0) {
-            eta = X * theta[|1 \ p|] + etac[cell]
+
+        // Concentrate the FEs out at the current theta
+        if (nfe > 0) {
+            base = (p > 0 ? X * theta[|1 \ p|] : J(n, 1, 0)) + etac[cell]
+            fe   = _stpf_feupdate(fe, base, v, t, Pf, infosf, VDf,
+                                  Gidx, nfe, tol)
+        }
+
+        if (nfe > 0) {
+            // Profile Newton: demean the design at the current weights,
+            // then score and information on the demeaned columns
+            eta = base + fe
             mu  = t :* exp(eta)
             mu  = mu + (mu :< 1e-300) :* 1e-300
-            ll  = quadsum(d :* ln(mu) - mu)
-            mup = mu[perm]
-            Mj  = _stpf_segsum(mup, ends)
-            MX  = _stpf_segsum(mup :* Xp, ends)
-            Rj  = Dj - Mj
-            s   = quadcross(X, d - mu) \ quadcross(W, Rj)
-            H   = quadcross(X, mu, X), (MX' * W) \
-                  (MX' * W)', quadcross(W, Mj, W)
+            ll  = quadsum(v :* (d :* ln(mu) - mu))
+            vmu = v :* mu
+            Xt  = Xfull
+            for (inner = 1; inner <= 200; inner++) {
+                Xt_prev = Xt
+                for (kk = 1; kk <= nfe; kk++) {
+                    for (jj = 1; jj <= q; jj++) {
+                        Xt[., jj] = _stpf_wdemean(Xt[., jj], vmu,
+                            Pf[., kk], (*infosf[kk])[., 2])
+                    }
+                }
+                if (max(abs(Xt - Xt_prev)) < tol * 0.01) break
+            }
+            s = quadcross(Xt, v :* (d - mu))
+            H = quadcross(Xt, vmu, Xt)
         }
-        else {
+        else if (p == 0) {
             // Pure cell-level model: iterate on (D_j, T_j) only
             Mj = Tj :* exp(etac)
             ll = dlogt + quadsum(Dj :* etac) - quadsum(Mj)
             Rj = Dj - Mj
             s  = quadcross(W, Rj)
             H  = quadcross(W, Mj, W)
+        }
+        else {
+            eta = X * theta[|1 \ p|] + etac[cell]
+            mu  = t :* exp(eta)
+            mu  = mu + (mu :< 1e-300) :* 1e-300
+            ll  = quadsum(v :* (d :* ln(mu) - mu))
+            vmu = v :* mu
+            mup = vmu[perm]
+            Mj  = _stpf_segsum(mup, ends)
+            Rj  = Dj - Mj
+            MX  = _stpf_segsum(mup :* Xp, ends)
+            s   = quadcross(X, v :* (d - mu)) \ quadcross(W, Rj)
+            H   = quadcross(X, vmu, X), (MX' * W) \
+                  (MX' * W)', quadcross(W, Mj, W)
         }
 
         Hinv = invsym(H)
@@ -430,19 +707,33 @@ void _stpois_fast_est(
         theta_new = theta + step
         for (halv = 1; halv <= 30; halv++) {
             etac = W * theta_new[|p + 1 \ q|]
-            if (p > 0) {
+            if (nfe > 0) {
+                // Profile likelihood: re-solve the FEs at the trial theta,
+                // otherwise good profile steps would be rejected whenever
+                // the covariates are correlated with the FE space
+                base   = (p > 0 ? X * theta_new[|1 \ p|] : J(n, 1, 0)) +
+                         etac[cell]
+                fe_try = _stpf_feupdate(fe, base, v, t, Pf, infosf, VDf,
+                                        Gidx, nfe, tol)
+                mu     = t :* exp(base + fe_try)
+                mu     = mu + (mu :< 1e-300) :* 1e-300
+                ll_new = quadsum(v :* (d :* ln(mu) - mu))
+            }
+            else if (p == 0) {
+                ll_new = dlogt + quadsum(Dj :* etac) -
+                         quadsum(Tj :* exp(etac))
+            }
+            else {
                 eta    = X * theta_new[|1 \ p|] + etac[cell]
                 mu     = t :* exp(eta)
                 mu     = mu + (mu :< 1e-300) :* 1e-300
-                ll_new = quadsum(d :* ln(mu) - mu)
-            }
-            else {
-                ll_new = dlogt + quadsum(Dj :* etac) - quadsum(Tj :* exp(etac))
+                ll_new = quadsum(v :* (d :* ln(mu) - mu))
             }
             if (ll_new >= ll - 1e-12) break
             step      = step / 2
             theta_new = theta + step
         }
+        if (nfe > 0) fe = fe_try
 
         delta_c = max(abs(theta_new - theta) :/ (1 :+ abs(theta_new)))
         theta   = theta_new
@@ -453,53 +744,84 @@ void _stpois_fast_est(
         }
     }
 
-    // ── Final Hessian and VCE ──────────────────────────────────────────────
+    // ── Final FE refresh, mu, and log likelihood ───────────────────────────
     etac = W * theta[|p + 1 \ q|]
-    if (p > 0) {
-        eta = X * theta[|1 \ p|] + etac[cell]
+    if (nfe > 0) {
+        base = (p > 0 ? X * theta[|1 \ p|] : J(n, 1, 0)) + etac[cell]
+        fe   = _stpf_feupdate(fe, base, v, t, Pf, infosf, VDf,
+                              Gidx, nfe, tol)
     }
-    else {
-        eta = etac[cell]
-    }
-    mu = t :* exp(eta)
-    mu = mu + (mu :< 1e-300) :* 1e-300
-    r  = d - mu
-    ll = quadsum(d :* ln(mu) - mu)
+    eta = (p > 0 ? X * theta[|1 \ p|] : J(n, 1, 0)) + etac[cell] + fe
+    mu  = t :* exp(eta)
+    mu  = mu + (mu :< 1e-300) :* 1e-300
+    r   = d - mu
+    ll  = quadsum(v :* (d :* ln(mu) - mu))
+    vmu = v :* mu
 
-    mup = mu[perm]
-    Mj  = _stpf_segsum(mup, ends)
-    if (p > 0) {
-        MX = _stpf_segsum(mup :* Xp, ends)
-        H  = quadcross(X, mu, X), (MX' * W) \
-             (MX' * W)', quadcross(W, Mj, W)
+    // Store the FE contribution for predict
+    if (nfe > 0 & dfevar != "") st_store(idx, dfevar, fe)
+
+    // ── Final Hessian and VCE ──────────────────────────────────────────────
+    if (nfe == 0) {
+        mup = vmu[perm]
+        Mj  = _stpf_segsum(mup, ends)
+        if (p > 0) {
+            MX = _stpf_segsum(mup :* Xp, ends)
+            H  = quadcross(X, vmu, X), (MX' * W) \
+                 (MX' * W)', quadcross(W, Mj, W)
+        }
+        else {
+            H = quadcross(W, Mj, W)
+        }
+        Hinv = invsym(H)
+        rank = sum(diagonal(Hinv) :!= 0)
+        S    = (ctype == "oim" ? J(0, 0, .) :
+               (p > 0 ? (v :* r) :* (X, W[cell, .]) : (v :* r) :* W[cell, .]))
     }
     else {
-        H = quadcross(W, Mj, W)
+        // Frisch-Waugh-Lovell: weighted-demean every design column within
+        // the absorbed groups; the partitioned information and the scores
+        // on the demeaned columns give the exact VCE (as in ppmlhdfe)
+        Xfull = (p > 0 ? (X, W[cell, .]) : W[cell, .])
+        Xt    = Xfull
+        for (inner = 1; inner <= 200; inner++) {
+            Xt_prev = Xt
+            for (kk = 1; kk <= nfe; kk++) {
+                for (jj = 1; jj <= q; jj++) {
+                    Xt[., jj] = _stpf_wdemean(Xt[., jj], vmu,
+                        Pf[., kk], (*infosf[kk])[., 2])
+                }
+            }
+            if (max(abs(Xt - Xt_prev)) < tol * 0.01) break
+        }
+        H    = quadcross(Xt, vmu, Xt)
+        Hinv = invsym(H)
+        rank = sum(diagonal(Hinv) :!= 0)
+        S    = (ctype == "oim" ? J(0, 0, .) : (v :* r) :* Xt)
     }
-    Hinv = invsym(H)
-    rank = sum(diagonal(Hinv) :!= 0)
 
     G_clust = 0
     if (ctype == "oim") {
         VV = Hinv
     }
-    else {
-        S = (p > 0 ? (r :* X, r :* W[cell, .]) : r :* W[cell, .])
-        if (ctype == "robust") {
-            B  = quadcross(S, S) * (n / (n - 1))
-            VV = Hinv * B * Hinv
-        }
-        else {
-            // Cluster sandwich via one sort and segment sums
-            cids  = st_data(idx, cluvar)
-            permc = order(cids, 1)
-            _stpf_segments(cids[permc], starts_c, ends_c)
-            G_clust = rows(starts_c)
-            SG = _stpf_segsum(S[permc, .], ends_c)
-            B  = quadcross(SG, SG) * (G_clust / (G_clust - 1))
-            VV = Hinv * B * Hinv
-        }
+    else if (ctype == "robust") {
+        // HC1 with Stata's N convention (sum of fweights, else # of obs)
+        B  = quadcross(S, S) * (n_stata / (n_stata - 1))
+        VV = Hinv * B * Hinv
     }
+    else {
+        // Cluster sandwich via one sort and segment sums
+        cids  = st_data(idx, cluvar)
+        permc = order(cids, 1)
+        _stpf_segments(cids[permc], starts_c, ends_c)
+        G_clust = rows(starts_c)
+        SG = _stpf_segsum(S[permc, .], ends_c)
+        B  = quadcross(SG, SG) * (G_clust / (G_clust - 1))
+        VV = Hinv * B * Hinv
+    }
+
+    // Wald chi2 of all reported coefficients (used when FEs are absorbed)
+    wald = (nfe > 0 ? theta' * invsym(VV) * theta : 0)
 
     st_matrix(b_ret, theta')
     st_matrix(V_ret, VV)
@@ -510,16 +832,7 @@ void _stpois_fast_est(
     st_numscalar(nclu_ret, G_clust)
     st_numscalar(rank_ret, rank)
     st_numscalar(J_ret,    J_)
-}
-
-// 0/1 start flags of length n given segment start positions
-real colvector _stpf_startflags(real scalar n, real colvector starts)
-{
-    real colvector f
-
-    f         = J(n, 1, 0)
-    f[starts] = J(rows(starts), 1, 1)
-    return(f)
+    st_numscalar(wald_ret, wald)
 }
 
 end

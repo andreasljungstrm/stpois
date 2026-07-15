@@ -10,7 +10,47 @@
 paper/*_files/
 paper/.quarto/
 paper/*.typ
-!paper/*.pdf
 
 # macOS
 .DS_Store
+
+# ── paper/sj/: SJ-specific files (journal-supplied; not tracked) ──────────
+# Style/class files supplied by Stata Press
+paper/sj/sj.sty
+paper/sj/stata.sty
+paper/sj/statapress.cls
+paper/sj/pagedims.sty
+paper/sj/sj.bst
+paper/sj/tl.eps
+paper/sj/tl.pdf
+paper/sj/tr.eps
+paper/sj/tr.pdf
+
+# SJ-generated LaTeX fragment (built by quarto render)
+paper/sj/stpois_sj.tex
+paper/sj/stpois_sj.tex.orig
+
+# SJ submission archive
+paper/sj/*.zip
+
+# SJ LaTeX build artifacts
+paper/sj/*.aux
+paper/sj/*.bbl
+paper/sj/*.blg
+paper/sj/*.fdb_latexmk
+paper/sj/*.fls
+paper/sj/*.log
+paper/sj/*.out
+paper/sj/*.pp1
+paper/sj/*.tag
+paper/sj/main.pdf
+
+# ── paper/arxiv/: arXiv version is fully tracked ─────────────────────────
+# LaTeX build artifacts only (the .tex, .pdf, .bib, log.tex are tracked)
+paper/arxiv/*.aux
+paper/arxiv/*.bbl
+paper/arxiv/*.blg
+paper/arxiv/*.fdb_latexmk
+paper/arxiv/*.fls
+paper/arxiv/*.log
+paper/arxiv/*.out

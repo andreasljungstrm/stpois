@@ -1,0 +1,25 @@
+. stpois age income i.edu i.region i.period, fast nolog
+  (fast) 2 individual-level + 16 cell-level parameters...
+  (fast) 500000 obs, 200 cells, 5 Newton iterations, converged=1
+{\smallskip}
+Poisson EHA {\EMDASH} fast (cell-accelerated exact MLE)
+{\smallskip}
+No. of subjects =      500,000                  Number of obs   =  500,000
+No. of failures =        6,759
+Time at risk    =       375045                  LR chi2(18)     =   850.69
+Log likelihood  = -35297.23308                  Prob > chi2     =   0.0000
+{\smallskip}
+\HLI{13}{\TOPT}\HLI{64}
+          _d {\VBAR} Coefficient  Std. err.      z    P>|z|     [95\% conf. interval]
+\HLI{13}{\PLUS}\HLI{64}
+         age {\VBAR}   .0265379    .002121    12.51   0.000     .0223808    .0306951
+      income {\VBAR}   .0518263   .0060872     8.51   0.000     .0398956    .0637571
+             {\VBAR}
+         edu {\VBAR}
+          2  {\VBAR}   .3070999   .0353078     8.70   0.000      .237898    .3763019
+          3  {\VBAR}   .5094171   .0339083    15.02   0.000      .442958    .5758762
+          4  {\VBAR}  -.1907793   .0398372    -4.79   0.000    -.2688587   -.1126998
+             {\VBAR}
+\oom
+       _cons {\VBAR}  -5.885082   .1191483   -49.39   0.000    -6.118608   -5.651556
+\HLI{13}{\BOTT}\HLI{64}

@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.6.0  14jul2026}{...}
+{* *! version 0.8.1  15jul2026}{...}
 {viewerjumpto "Syntax" "stpois##syntax"}{...}
 {viewerjumpto "Description" "stpois##description"}{...}
 {viewerjumpto "Options" "stpois##options"}{...}
@@ -45,6 +45,8 @@
 {synopt:{opt absorb(terms)}}absorb fixed effects; {it:terms} are variable
     names or {it:var1}{cmd:#}{it:var2} interactions;
     see {help stpois##hdfe:HDFE}{p_end}
+{synopt:{opt d(newvar)}}store the total fixed-effect contribution in
+    {it:newvar}; default is {cmd:_stpois_fe} (replaced on each run){p_end}
 {synopt:{opt tol:erance(#)}}iteration convergence tolerance; default {cmd:1e-8}{p_end}
 {synopt:{opt maxiter(#)}}maximum iterations; default {cmd:100}{p_end}
 
@@ -53,14 +55,19 @@
 {p2colreset}{...}
 
 {p 4 6 2}
-{opt fweight}s, {opt iweight}s, and {opt pweight}s are allowed;
-see {help weight}.{p_end}
+{opt fweight}s, {opt iweight}s, and {opt pweight}s are allowed on all
+paths; see {help weight}. {opt pweight}s imply robust standard errors.
+Weighted coefficients and standard errors are numerically identical to
+the corresponding weighted {cmd:poisson} model on every path.{p_end}
 
 {p 4 6 2}
 Data must be {cmd:stset} before using {cmd:stpois}; see {helpb stset}.{p_end}
 
 {p 4 6 2}
-{cmd:fast} and {cmd:absorb()} may not be combined.{p_end}
+{cmd:fast} and {cmd:absorb()} may be combined: the absorbed fixed
+effects are then concentrated out of the cell-accelerated likelihood by
+closed-form Gauss–Seidel updates, and the varlist's cell-level terms
+still run on the cells; see {help stpois##fast:Fast estimation}.{p_end}
 
 
 {marker description}{...}
@@ -137,7 +144,14 @@ see {help stpois##fast:Fast estimation}.
 {phang}
 {opt absorb(terms)} absorbs fixed effects. Each term is a variable name or
 an interaction {it:var1}{cmd:#}{it:var2}, absorbed as the
-cross-classification of its variables.
+cross-classification of its variables. May be combined with {cmd:fast}.
+
+{phang}
+{opt d(newvar)} stores the total fixed-effect contribution of
+{cmd:absorb()} in {it:newvar}. If not specified, it is stored in
+{cmd:_stpois_fe}, which is replaced on each {cmd:absorb()} run. The
+variable is used by {cmd:predict} to form full linear predictors and
+level predictions.
 
 {phang}
 {opt tolerance(#)} and {opt maxiter(#)} control the iterative convergence
@@ -190,7 +204,21 @@ segment aggregation; there are no data copies or collapse round-trips.
 {pstd}
 {bf:Exactness.} Coefficients, the log likelihood, and the OIM, robust,
 and cluster–robust standard errors are numerically identical to the full
-{cmd:poisson} model (verified to 1e-6 in the test suite).
+{cmd:poisson} model (verified to 1e-6 in the test suite). With
+{cmd:vce(cluster)}, the cluster variable must be numeric.
+
+{pstd}
+{bf:With absorb().} When {cmd:fast} is combined with {cmd:absorb()},
+the absorbed fixed effects are concentrated out of the likelihood by
+closed-form Gauss–Seidel updates — for Poisson, the profile optimum of
+group {it:g} is α{sub:g} = ln(Σ{sub:g} d / Σ{sub:g} μ) — iterated to
+convergence inside every Newton step (the approach of R's
+{cmd:fixest}). The Newton update is then taken on the profile
+likelihood, with the design columns weighted-demeaned within the
+absorbed groups (Frisch–Waugh–Lovell), which also yields the exact
+partitioned VCE. Results are numerically identical to {cmd:poisson}
+with explicit dummy variables for both the cell-level terms and the
+absorbed effects.
 
 
 {marker hdfe}{...}
@@ -235,7 +263,14 @@ clustered sandwich with scores summed within clusters.
 {pstd}
 {bf:Separation.} Observations in FE groups with no events (Σd = 0) are
 dropped before estimation with a message (those FE effects diverge to
-−∞).
+−∞). The header statistics (subjects, failures, time at risk) are
+computed on the final estimation sample after any such drops.
+
+{pstd}
+{bf:Model test.} The reported chi-squared statistic is a Wald test of
+the non-absorbed coefficients; a likelihood-ratio test against a null
+model without the fixed effects would not be valid. Absorbed variables
+must be numeric.
 
 
 {marker postestimation}{...}
@@ -265,8 +300,15 @@ Standard postestimation commands available after {cmd:stpois}:
 {p2colreset}{...}
 
 {pstd}
-After {cmd:absorb()}, {helpb margins} operates on the non-absorbed
-regressors.
+After {cmd:absorb()}, all {cmd:predict} statistics are available:
+{cmd:stpois} stores the total fixed-effect contribution in the variable
+named by {cmd:e(fes_var)} ({cmd:_stpois_fe} by default, or the
+{cmd:d()} option), and {cmd:predict} adds it to the linear predictor,
+so {opt xb}, {opt n}, {opt hazard}, and {opt survival} include the
+absorbed effects and match the corresponding dummy-variable
+{cmd:poisson} predictions. If the stored variable has been dropped,
+{cmd:predict} exits with an error; refit the model.
+{helpb margins} operates on the non-absorbed regressors.
 
 
 {marker examples}{...}
@@ -291,6 +333,14 @@ regressors.
 {pstd}Interactions{p_end}
 {phang2}{cmd:. stpois c.age##i.posttran i.surgery, fast}{p_end}
 {phang2}{cmd:. stpois age, absorb(posttran#surgery)}{p_end}
+
+{pstd}fast combined with absorbed fixed effects; weights{p_end}
+{phang2}{cmd:. stpois age i.posttran, fast absorb(surgery)}{p_end}
+{phang2}{cmd:. stpois age i.posttran [fw=w], fast absorb(surgery)}{p_end}
+
+{pstd}Predictions after absorb() (include the absorbed effects){p_end}
+{phang2}{cmd:. stpois age posttran, absorb(surgery)}{p_end}
+{phang2}{cmd:. predict double haz, hazard}{p_end}
 
 {pstd}With episode-split data{p_end}
 {phang2}{cmd:. stsplit caltime, at(1970 1980 1990 2000) after(time=dob)}{p_end}

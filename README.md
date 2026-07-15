@@ -42,6 +42,14 @@ stpois age i.surgery, fast
 * Interactions work on every path
 stpois c.age##i.posttran i.surgery, fast
 stpois age, absorb(posttran#surgery)
+
+* Combine fast and absorb(); weights work on every path
+stpois age i.posttran, fast absorb(surgery)
+stpois age posttran [pw=w], absorb(surgery)
+
+* Predictions after absorb() include the absorbed effects
+stpois age posttran, absorb(surgery)
+predict double haz, hazard
 ```
 
 See `help stpois` after installation for full syntax and the mathematical basis of the methods.
@@ -55,7 +63,9 @@ stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
        fast ]
 ```
 
-- `fast` and `absorb()` may not be combined.
+- `fast` and `absorb()` may be combined: the absorbed fixed effects are concentrated out of the cell-accelerated likelihood by closed-form Gauss–Seidel updates (the `fixest` approach), with the profile-Newton step and VCE built on FWL-demeaned design columns.
+- Weights (`fweight`, `iweight`, `pweight`) are supported on all paths; `pweight`s imply robust standard errors. Weighted results match weighted `poisson` exactly.
+- After `absorb()`, the total fixed-effect contribution is stored in `_stpois_fe` (or the variable named in `d()`), and `predict` uses it, so `xb`, `n`, `hazard`, and `survival` include the absorbed effects.
 - With `fast`, terms built only from factor-variable pieces enter at the cell level (and define the cells); terms involving a continuous piece enter at the individual level. At least one categorical term is required.
 - `absorb()` accepts variable names and `var1#var2` interactions.
 
@@ -81,7 +91,15 @@ do tests/test_stpois.do
 do tests/test_fast_exact.do
 ```
 
-The suite checks that (i) the standard path matches `streg, distribution(exponential)`; (ii) `absorb()` matches explicit dummy-variable Poisson on coefficients *and* standard errors, including interacted fixed effects; (iii) `fast` matches the full MLE on coefficients, standard errors (OIM, robust, clustered), and log likelihood to 1e-6, for all interaction types and for all-categorical models.
+The suite checks, to 1e-6, that (i) the standard path matches `streg, distribution(exponential)`; (ii) `absorb()` matches explicit dummy-variable Poisson on coefficients *and* standard errors (OIM, robust, and clustered) for single, interacted, and multiple fixed-effect terms, with the Wald model test matching the joint test on the dummy-variable model and header statistics computed after separation drops; (iii) `fast` matches the full MLE on coefficients, standard errors (OIM, robust, clustered), and log likelihood, for all interaction types, for all-categorical models, and for a continuous covariate with zero between-cell variation; (iv) weighted estimation (fw/iw/pw) matches weighted `poisson` exactly on `fast` and `absorb()`; (v) `fast absorb()` combined matches dummy-variable `poisson`, including multi-term absorbs, clustered SEs, and weights; and (vi) `predict` after `absorb()` reproduces the dummy-variable `poisson` predictions.
+
+The full pipeline (tests → paper examples → benchmarks) runs with:
+
+```stata
+do paper/make_all.do
+```
+
+Benchmark timings are written to `paper/benchmark_results.csv` and `paper/benchmark_hdfe_results.csv`, which back the tables in the paper.
 
 ## Citation
 
