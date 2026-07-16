@@ -59,28 +59,29 @@ high-dimensional fixed effects}
 workhorse of event-history analysis, but two practical obstacles limit
 its use with full-population register data: models with rich
 fixed-effect structures become slow or infeasible to estimate with
-explicit dummy variables, and continuous covariates prevent the
-collapsing of individual records to risk cells that otherwise makes such
-models fast. This article introduces the community-contributed command
-\stcmd{stpois}, which fits Poisson event-history models directly on
-\stcmd{stset} data through three estimation paths, all of which return
-maximum-likelihood estimates that agree with \stcmd{poisson} to at least
-\(10^{-6}\): a standard path that wraps \stcmd{poisson} with automatic
-exposure; a high-dimensional fixed-effects path implemented via
-iteratively reweighted alternating projections in Mata; and a fast path
-that accelerates estimation through the cell structure of the
-categorical covariates. The fast path computes each Newton iteration
-from exponentially tilted within-cell moments in a single pass over the
-microdata. Coefficients, log likelihoods, and observed-information,
-robust, and cluster--robust standard errors agree with the corresponding
-\stcmd{poisson} model on every path to at least \(10^{-6}\) (typically
-\(\sim 10^{-8}\)); factor-variable interactions and weights are
-supported throughout, the two acceleration mechanisms can be combined,
-and postestimation predictions after absorption include the recovered
-fixed effects. Benchmarks against \stcmd{streg}, \stcmd{poisson}, and
-\stcmd{ppmlhdfe} document the speed gains in three settings:
-episode-split workflows, all-categorical rate models, and models with
-high-dimensional fixed effects.
+explicit dummy variables, owing to the quadratic growth in memory and
+computation time with the parameter count, and continuous covariates
+prevent the collapsing of individual records to risk cells that
+otherwise makes such models fast. This article introduces the
+community-contributed command \stcmd{stpois}, which fits Poisson
+event-history models directly on \stcmd{stset} data through three
+estimation paths, all of which return maximum-likelihood estimates that
+agree with \stcmd{poisson} to at least \(10^{-6}\): a standard path that
+wraps \stcmd{poisson} with automatic exposure; a high-dimensional
+fixed-effects path implemented via iteratively reweighted alternating
+projections in Mata; and a fast path that accelerates estimation through
+the cell structure of the categorical covariates. The fast path computes
+each Newton iteration from exponentially tilted within-cell moments in a
+single pass over the microdata. Coefficients, log likelihoods, and
+observed-information, robust, and cluster--robust standard errors agree
+with the corresponding \stcmd{poisson} model on every path to at least
+\(10^{-6}\) (typically \(\sim 10^{-8}\)); factor-variable interactions
+and weights are supported throughout, the two acceleration mechanisms
+can be combined, and postestimation predictions after absorption include
+the recovered fixed effects. Benchmarks against \stcmd{streg},
+\stcmd{poisson}, and \stcmd{ppmlhdfe} document the speed gains in three
+settings: episode-split workflows, all-categorical rate models, and
+models with high-dimensional fixed effects.
 \end{abstract}
 
 \medskip\noindent\textbf{Keywords:} \inserttag, stpois, event-history
@@ -114,11 +115,13 @@ millions or tens of millions of episode records, particularly after
 splitting on calendar time, age, and duration. First, models with rich
 fixed-effect structures---birth cohorts, municipalities, detailed
 occupational codes, or their interactions---become slow or infeasible
-when the fixed effects are entered as explicit dummy variables, since
-estimation time and memory grow quadratically with the parameter count.
-The \stcmd{ppmlhdfe} command \citep{correia2020} solves this problem for
-general Poisson models, building on the alternating-projections approach
-of \citet{guimaraes2010}; it depends on the \stcmd{ftools} and
+when the fixed effects are entered as explicit dummy variables, because
+both estimation time and memory grow quadratically with the parameter
+count (and because Stata's dummy-variable trap limits the practical
+number of indicator columns). The \stcmd{ppmlhdfe} command
+\citep{correia2020} solves this problem for general Poisson models,
+building on the alternating-projections approach of
+\citet{guimaraes2010}; it depends on the \stcmd{ftools} and
 \stcmd{reghdfe} packages, so deploying it means installing that chain,
 which can add friction in the locked-down secure environments where
 register data must typically be analyzed. Second, and less widely
@@ -286,9 +289,14 @@ Newton step in \stcmd{poisson}, by contrast, costs \(O(n(p+k)^2)\) with
 \(k\) the number of cell-level parameters, so the per-iteration
 floating-point saving is a factor of roughly \((p+k)^2/p^2\), and it
 grows with the richness of the categorical structure. Step-halving on
-the log likelihood guards the updates, and, writing
-\(\bm{\theta} = (\bm{\gamma}', \bm{\delta}')'\) for the stacked
-parameter vector, convergence is declared when
+the log likelihood guards the updates: if the full Newton step does not
+increase the log likelihood, the step length is halved repeatedly until
+an improvement is found or the step shrinks to \(2^{-16}\) of its
+original length, at which point the algorithm accepts the current
+iterate and continues; if the outer convergence criterion is still not
+met after \stcmd{maxiter()} such steps, \stcmd{e(converged)} is set to
+\(0\). Writing \(\bm{\theta} = (\bm{\gamma}', \bm{\delta}')'\) for the
+stacked parameter vector, convergence is declared when
 \(\max_\ell |\Delta\theta_\ell| / (1 + |\theta_\ell|)\), evaluated at
 the updated parameter vector, falls below \stcmd{tolerance()}.
 
@@ -342,7 +350,10 @@ delegated to Stata's \stcmd{collapse} and \stcmd{poisson} as described
 in section~\ref{sec:fast}.) With weights, every
 likelihood contribution, cell sum, and tilted moment is
 weight-multiplied, so the weighted estimates remain the exact weighted
-maximum-likelihood estimates.
+maximum-likelihood estimates. For very large datasets, running
+\stcmd{compress} before estimation reduces the in-memory footprint of
+the loaded columns; the Mata engine creates no additional dataset
+variables beyond the single sort permutation.
 
 \subsection{Combining fast with absorbed fixed
 effects}\label{combining-fast-with-absorbed-fixed-effects}
@@ -476,14 +487,24 @@ stpois
 
 The data must be \stcmd{stset}; see \stref{stset}. \stcmd{fweight}s,
 \stcmd{iweight}s, and \stcmd{pweight}s are allowed on all paths;
-\stcmd{pweight}s imply robust standard errors, and weighted coefficients
-and standard errors agree with the corresponding weighted
-\stcmd{poisson} model to at least \(10^{-6}\). \stcmd{fast} and
-\stcmd{absorb()} may be combined
+\stcmd{pweight}s imply robust standard errors (see option descriptions
+below), and weighted coefficients and standard errors agree with the
+corresponding weighted \stcmd{poisson} model to at least \(10^{-6}\).
+\stcmd{fast} and \stcmd{absorb()} may be combined
 (section~\ref{sec:combo}). The varlist may include
 factor variables and interactions on every path. Variables named in
 \stcmd{absorb()} and, with \stcmd{fast}, the cluster variable must be
 numeric.
+
+\stcmd{stpois} supports the \stcmd{svy:} prefix for design-based
+variance estimation. \stcmd{svy: stpois} produces Taylor-linearized
+standard errors that agree with \stcmd{svy: poisson} on both point
+estimates and standard errors; see
+section~\ref{sec:svy}. \stcmd{svy bootstrap:} and
+\stcmd{svy jackknife:} are also supported on all paths; \stcmd{absorb()}
+and \stcmd{fast} are restricted to these resampling-based variants,
+since Taylor linearization requires per-observation scores that are not
+available after absorption or cell acceleration.
 
 \subsection{Options}\label{options}
 
@@ -509,7 +530,14 @@ equal to hazard ratios in this model).  Display only.
 \stcmd{vce(cluster {\it clustvar\/})} are supported on all paths
 and reproduce the corresponding full \stcmd{poisson} model to at least
 $10^{-6}$; the standard path additionally accepts anything
-\stcmd{poisson} accepts.
+\stcmd{poisson} accepts.  On the \stcmd{fast} and \stcmd{absorb()}
+paths, supplying \stcmd{pweight}s without an explicit \stcmd{vce()},
+\stcmd{robust}, or \stcmd{cluster()} option automatically sets
+\stcmd{vce(robust)}; on the standard path, \stcmd{poisson} applies the
+same convention.  When comparing results with \stcmd{ppmlhdfe}---which
+reports robust standard errors by default---ensure both commands use
+\stcmd{vce(robust)} to avoid misinterpreting the difference between
+\stcmd{vce(oim)} and \stcmd{vce(robust)} as an algorithmic discrepancy.
 
 \hangpara
 \stcmd{fast} selects cell-accelerated exact estimation; see
@@ -628,6 +656,13 @@ response therefore condition on the absorbed effects and their
 delta-method standard errors do not propagate the sampling uncertainty
 in those effects, exactly as for any fixed-effect contribution
 recovered post-absorption in \stcmd{ppmlhdfe} or \stcmd{reghdfe}.
+Predictions based solely on the non-absorbed coefficient vector---setting
+the absorbed effects to zero---are not directly available through
+\stcmd{predict}; they can be obtained with
+\stcmd{matrix score {\it newvar\/} = e(b)}, which scores only the
+columns of \stcmd{e(b)} without adding the fixed-effect variable.  This
+is useful, for example, to compute marginal effects at the mean of the
+non-absorbed covariates while holding the fixed effects at zero.
 \end{sloppypar}
 
 On the \stcmd{fast} and \stcmd{absorb()} paths, \stcmd{stpois} stores
@@ -644,12 +679,16 @@ groups are dropped before estimation
 (section~\ref{sec:hdfe}); separation induced by the
 non-absorbed varlist is not given a targeted drop and instead surfaces
 as nonconvergence with \stcmd{e(converged)} equal to \(0\). In practice,
-if \stcmd{stpois} does not converge, the first diagnostic steps are to
-check \stcmd{e(ic)} against \stcmd{maxiter()}, to inspect whether any
-covariate perfectly predicts the outcome within cells, and---if using
-\stcmd{absorb()}---to verify that every absorbed group contains at least
-one event; \stcmd{ppmlhdfe} \citep{correia2020} provides a more
-comprehensive separation-detection algorithm for the HDFE case.
+if \stcmd{stpois} does not converge, the recommended diagnostic steps
+are:
+
+\begin{enumerate}
+\item Check \stcmd{e(ic)} against \stcmd{maxiter()}.  If the two are equal, the iteration cap was hit rather than the tolerance, and increasing \stcmd{maxiter()} or loosening \stcmd{tolerance()} may help.
+\item Inspect for quasi-complete separation in the non-absorbed terms: a binary covariate that perfectly predicts the event indicator within some stratum will cause the corresponding coefficient to diverge.  Tabulating \stcmd{\_d} against the suspect covariate, or running \stcmd{poisson \_d {\it varlist\/}, exposure({\it exp\/})} on a small subsample, can isolate the issue.
+\item Check for collinearity and poor scaling.  Continuous covariates on very different scales can slow convergence or trigger numerical issues; standardizing them before estimation is a simple precaution.
+\item If using \stcmd{absorb()}, verify with \stcmd{tabulate {\it absorbvar\/} \_d} that every absorbed group contains at least one event; any all-zero group should have been dropped automatically, but interactions can create groups that pass the check individually while being jointly separated.
+\item As a cross-check, fit the model with \stcmd{ppmlhdfe} \citep{correia2020}, which provides a more comprehensive separation-detection algorithm that can identify separated observations even in the non-absorbed terms.
+\end{enumerate}
 
 \section{Examples}
 
@@ -776,20 +815,127 @@ after \stcmd{absorb()} include the absorbed effects:
 
 \subsection{Episode-split workflow}\label{episode-split-workflow}
 
-In applications, the typical sequence splits spells on calendar time,
-age, or duration and then estimates piecewise-constant hazard models:
+\label{sec:episode}
+
+The typical episode-split workflow starts with one record per subject,
+splits spells into shorter episodes, adds indicators for the resulting
+time bands to model the baseline hazard, and then estimates the
+piecewise-constant hazard model. The following self-contained example
+illustrates each step.
+
+We simulate 1,000 subjects observed for up to ten years, with age, sex,
+and log-income as covariates:
 
 \begin{stlog}
-. stsplit fu, at(1(1)30)
-. stpois i.fu age income i.edu, irr
-. stpois i.fu age income i.edu, fast
-. stpois age income, absorb(fu edu region) vce(cluster region)
+. clear
+. set obs 1000
+. set seed 20260716
+. gen id       = _n
+. gen female   = (runiform() < 0.5)
+. gen age      = 18 + floor(42 * runiform())   // age 18--59
+. gen income   = rnormal(10, 2)
+. gen years    = 1 + floor(10 * runiform())    // 1--10 years at risk
+. gen event    = (runiform() < 1 - exp(-exp(-5 + 0.04*age - 0.3*female) * years))
+{\smallskip}
+. stset years, failure(event) id(id)
 \end{stlog}
 
-\noindent The last command absorbs three fixed-effect terms
-simultaneously and clusters the standard errors; the full output for
-this workflow is generated by the example script that accompanies the
-package.
+\noindent The dataset at this point has one record per subject, with
+\stcmd{\_t0 = 0}, \stcmd{\_t = years}, and \stcmd{\_d = event}.
+\stcmd{stsplit} splits each spell into annual episodes:
+
+\begin{stlog}
+. stsplit fu, at(1(1)10)
+\oom
+{\smallskip}
+. list id female age _t0 _t _d in 1/6, noobs sep(3)
+{\smallskip}
+  +--------------------------------------+
+  | id   female   age    _t0    _t    _d |
+  |--------------------------------------|
+  |  1        0    52      0     1     0 |
+  |  1        0    52      1     2     0 |
+  |  1        0    52      2     3     1 |
+  |--------------------------------------|
+  |  2        1    34      0     1     0 |
+  |  2        1    34      1     2     0 |
+  |  2        1    34      2     3     0 |
+  +--------------------------------------+
+\end{stlog}
+
+\noindent After splitting, each original subject-year becomes a separate
+episode record, with \stcmd{\_t0} and \stcmd{\_t} marking the episode
+boundaries. The variable \stcmd{fu} records the follow-up band (0 =
+first year, 1 = second year, and so on). The failure indicator
+\stcmd{\_d} is 1 only in the episode in which the event occurred and 0
+in all preceding episodes. The exposure for each record,
+\(\stcmd{\_t} - \stcmd{\_t0}\), is one year except possibly for the last
+episode, which may be shorter.
+
+A piecewise-constant hazard model with ten follow-up bands, a linear age
+effect, and sex is then estimated on the episode file:
+
+\begin{stlog}
+. stpois i.fu age female income, irr
+. stpois i.fu age female income, fast
+. stpois age female income, absorb(fu) vce(robust)
+\end{stlog}
+
+\noindent The first command uses the standard path and produces
+identical results to \stcmd{streg, distribution(exponential)} on the
+same data. The second uses the fast path, which treats \stcmd{i.fu} as
+the cell-defining categorical term and estimates \stcmd{age},
+\stcmd{female}, and \stcmd{income} at the individual level from
+exponentially tilted within-cell moments. The third absorbs the ten
+follow-up dummies, estimating only the covariate coefficients; because
+the follow-up baseline hazard is of secondary interest here, absorption
+avoids placing nine dummy columns in the output while still controlling
+for duration dependence. The fast and absorb approaches can be combined:
+\stcmd{stpois age female income i.edu, fast absorb(fu region) vce(cluster region)}
+absorbs two high-dimensional nuisance effects simultaneously and
+clusters the standard errors, while the individual-level covariates and
+the education cells are estimated from the full episode file.
+
+\subsection{Survey data}\label{survey-data}
+
+\label{sec:svy}
+
+\stcmd{stpois} declares \stcmd{properties(st svyr svyb svyj)}, so
+\stcmd{svyset} data can be analyzed with the full \stcmd{svy:} prefix
+family. For Taylor-linearized standard errors, \stcmd{svy: stpois} calls
+\stcmd{stpois} to obtain point estimates, then requests per-observation
+scores \(d_i - \hat{\mu}_i\) from \stcmd{stpois\_p} and constructs the
+sandwich variance matrix using the survey design; this is the same
+linearization as \stcmd{svy: poisson} and produces identical results:
+
+\begin{stlog}
+. sysuse cancer, clear
+. stset studytime, failure(died)
+. svyset _n [pweight=age]
+{\smallskip}
+. svy: stpois age drug, irr
+{\smallskip}
+\oom
+. svy: poisson _d age drug, exposure(studytime) irr   // identical output
+\end{stlog}
+
+\noindent \stcmd{stpois} inherits sampling weights through the
+\stcmd{stset} weight mechanism: when \stcmd{svy:} is active, it injects
+the survey \stcmd{pweight} into the dataset's \stcmd{stset}
+characteristics before calling the subcommand, and \stcmd{stpois} reads
+those characteristics to apply the weights to the internal
+\stcmd{poisson} call. This mirrors the behavior of \stcmd{streg} under
+\stcmd{svy:} and means that \stcmd{svy: stpois} and \stcmd{svy: poisson}
+agree on both point estimates and linearized standard errors to at least
+\(10^{-6}\). \stcmd{svy, subpop():} subpopulation estimation and
+stratified or multi-stage designs are handled automatically by Stata's
+\stcmd{svy} machinery.
+
+Taylor linearization requires per-observation scores and is therefore
+restricted to the standard path. With \stcmd{absorb()} or \stcmd{fast},
+use \stcmd{svy bootstrap: stpois} or \stcmd{svy jackknife: stpois}:
+these resampling-based variance estimators re-run the full estimation on
+each replicate and are therefore valid for any estimation path.
 
 \section{Relation to existing commands}
 
@@ -838,6 +984,7 @@ Robust/cluster VCE               &$\bullet$&$\bullet$&$\bullet$&$\bullet$&$\bull
 fw/iw/pw weights                 &$\bullet$&$\bullet$&$\bullet$&$\circ$ &$\bullet$&$\bullet$\\
 Separation detection             &        &        &        &        &$\bullet$&$\circ$ \\
 Recover/predict FE contribution  &        &        &        &        &$\bullet$&$\bullet$\\
+\stcmd{svy:} prefix (linearized) &$\bullet$&$\bullet$&$\bullet$&$\circ$ &$\circ$ &$\bullet$\\
 No external dependencies         &$\bullet$&$\bullet$&$\bullet$&$\bullet$&        &$\bullet$\\
 \noalign{\smallskip}
 \hline
@@ -876,6 +1023,7 @@ benchmark:
 \item \textbf{Weights} (frequency, importance, and sampling) on the fast and absorbed paths match the corresponding weighted \stcmd{poisson} model on coefficients and standard errors to $10^{-6}$, with \stcmd{e(N)} following Stata's conventions and \stcmd{pweight}s implying robust standard errors.
 \item \textbf{fast + absorb()} matches \stcmd{poisson} with explicit dummies for both the cell-level terms and the absorbed effects---coefficients and observed-information, robust, and clustered standard errors to $10^{-6}$---including multi-term absorbs and weighted estimation.
 \item \textbf{predict} after \stcmd{absorb()} reproduces the dummy-variable \stcmd{poisson} predictions of expected events, and the hazard equals the exponentiated no-offset linear predictor, on both the IRLS and the fast+absorb engines.
+\item \textbf{svy:} on the standard path, \stcmd{svy: stpois} agrees with \stcmd{svy: poisson} on point estimates and Taylor-linearized standard errors to $10^{-6}$ (observed agreement at the level of floating-point rounding, $\sim 10^{-15}$), including with stratified designs and subpopulation estimation.
 \end{enumerate}
 
 All tests pass on Stata~19 (BE); the command requires
@@ -1094,24 +1242,26 @@ limits.
 
 \section{Conclusion}
 
-\stcmd{stpois} packages three things that belong together but have
+\stcmd{stpois} packages four things that belong together but have
 required separate workflows: the Poisson formulation of event-history
 models on \stcmd{stset} data, absorption of high-dimensional fixed
-effects without external dependencies, and cell-accelerated estimation
-that retains continuous covariates. The standard and fast paths are
-algebraically exact---they solve the same likelihood as \stcmd{poisson}
-with no mathematical approximation---and the \stcmd{absorb()} path
-converges to the same maximum-likelihood optimum to within its specified
-tolerance; the test suite holds coefficients \emph{and} variance
-estimators, not merely point estimates, to the \stcmd{streg} and
-\stcmd{poisson} benchmarks at \(10^{-6}\) (typically \(\sim 10^{-8}\)),
-and factor-variable interactions are supported throughout, including
+effects without external dependencies, cell-accelerated estimation that
+retains continuous covariates, and design-based variance estimation via
+the \stcmd{svy:} prefix. The standard and fast paths are algebraically
+exact---they solve the same likelihood as \stcmd{poisson} with no
+mathematical approximation---and the \stcmd{absorb()} path converges to
+the same maximum-likelihood optimum to within its specified tolerance;
+the test suite holds coefficients \emph{and} variance estimators, not
+merely point estimates, to the \stcmd{streg} and \stcmd{poisson}
+benchmarks at \(10^{-6}\) (typically \(\sim 10^{-8}\)), and
+factor-variable interactions are supported throughout, including
 interacted fixed effects. Weights are accepted on every path, the fast
-and absorbed paths can be combined, and predictions after
-\stcmd{absorb()} include the stored fixed-effect contributions. The
-command, its help file, the test suite, and the benchmark scripts are
-available from the author's repository and are installable with
-\stcmd{net install}.
+and absorbed paths can be combined, predictions after \stcmd{absorb()}
+include the stored fixed-effect contributions, and \stcmd{svy: stpois}
+produces Taylor-linearized standard errors that agree with
+\stcmd{svy: poisson} to at least \(10^{-6}\). The command, its help
+file, the test suite, and the benchmark scripts are available from the
+author's repository and are installable with \stcmd{net install}.
 
 \section{Acknowledgments}
 
