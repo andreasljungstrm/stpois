@@ -1,6 +1,6 @@
-*! version 0.8.1  15jul2026  Andreas Ljungström, SOFI Stockholm University
+*! version 0.9.0  16jul2026  Andreas Ljungström, SOFI Stockholm University
 *! Poisson event-history regression for stset data
-program stpois, eclass properties(st)
+program stpois, eclass properties(st svyr svyb svyj)
     version 14
 
     if replay() {
@@ -59,6 +59,19 @@ program stpois, eclass properties(st)
     // Weight expression (standard path) and weight variable (Mata engines)
     local wgtexpr
     tempvar wv
+
+    // Inherit stset weight if no command-line weight supplied.
+    // svy injects its pweight into _dta[st_wv] before calling st subcommands;
+    // streg uses the same mechanism, so we mirror it here.
+    if "`weight'" == "" {
+        local _st_wv : char _dta[st_wv]
+        local _st_wt : char _dta[st_wt]
+        if "`_st_wv'" != "" & "`_st_wt'" != "" {
+            local weight "`_st_wt'"
+            local exp " = `_st_wv'"
+        }
+    }
+
     if "`weight'" != "" {
         local wgtexpr "[`weight'`exp']"
         qui gen double `wv' `exp' if `touse'
