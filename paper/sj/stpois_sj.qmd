@@ -4,6 +4,10 @@ title-short: "stpois: Fast Poisson event-history regression"
 abstract: "Poisson regression on episode-split survival data is a workhorse of event-history analysis, but two practical obstacles limit its use with full-population register data: models with rich fixed-effect structures become slow or infeasible to estimate with explicit dummy variables, and continuous covariates prevent the collapsing of individual records to risk cells that otherwise makes such models fast.  This article introduces the community-contributed command \\stcmd{stpois}, which fits Poisson event-history models directly on \\stcmd{stset} data through three estimation paths, all of which return maximum-likelihood estimates that agree with \\stcmd{poisson} to at least $10^{-6}$: a standard path that wraps \\stcmd{poisson} with automatic exposure; a high-dimensional fixed-effects path implemented via iteratively reweighted alternating projections in Mata; and a fast path that accelerates estimation through the cell structure of the categorical covariates.  The fast path computes each Newton iteration from exponentially tilted within-cell moments in a single pass over the microdata.  Coefficients, log likelihoods, and observed-information, robust, and cluster--robust standard errors agree with the corresponding \\stcmd{poisson} model on every path to at least $10^{-6}$ (typically $\\sim 10^{-8}$); factor-variable interactions and weights are supported throughout, the two acceleration mechanisms can be combined, and postestimation predictions after absorption include the recovered fixed effects. Benchmarks against \\stcmd{streg}, \\stcmd{poisson}, and \\stcmd{ppmlhdfe} document the speed gains in three settings: episode-split workflows, all-categorical rate models, and models with high-dimensional fixed effects."
 keywords: "\\inserttag, stpois, event-history analysis, Poisson regression, piecewise exponential model, high-dimensional fixed effects, register data"
 about-authors: "Andreas Ljungström is a PhD student at the Swedish Institute for Social Research (SOFI), Stockholm University. His work concerns social stratification broadly, but with a special focus on integration in education and early labor market outcomes using full-population Swedish register data."
+author:
+  - name: Andreas Ljungström
+    affiliation: Swedish Institute for Social Research (SOFI), Stockholm University
+    email: andreas.ljungstrom@sofi.su.se
 format:
   latex:
     template: sj-template.tex
@@ -943,4 +947,4 @@ Nearly a `{python} hdfe_speedup_x`$\times$ saving at identical output; the dummy
 
 \section{Acknowledgments}
 
-The author thanks the editors and two anonymous referees for their comments.
+TBW
