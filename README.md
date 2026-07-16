@@ -80,7 +80,8 @@ stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
 | `stpois.sthlp` | Stata help file |
 | `stpois.pkg`, `stata.toc` | `net install` metadata |
 | `tests/` | Validation suite (run from repo root) |
-| `paper/` | Companion paper (Quarto/Typst source and PDF) plus benchmark scripts |
+| `paper/` | Companion software paper (Quarto/Typst source and PDF) plus benchmark scripts |
+| `paper/stats/` | Theoretical/methodological paper (tilted cell moments, alternating-projections convergence theory, high-dimensional asymptotics) with a self-contained Python reference implementation and all simulation code |
 
 ## Testing
 

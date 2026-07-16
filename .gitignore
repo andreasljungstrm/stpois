@@ -54,3 +54,14 @@ paper/arxiv/*.fdb_latexmk
 paper/arxiv/*.fls
 paper/arxiv/*.log
 paper/arxiv/*.out
+
+# ── paper/stats/: LaTeX build artifacts only (.tex, .pdf, .bib tracked) ──
+paper/stats/*.aux
+paper/stats/*.bbl
+paper/stats/*.blg
+paper/stats/*.fdb_latexmk
+paper/stats/*.fls
+paper/stats/*.log
+paper/stats/*.out
+paper/stats/*.toc
+paper/stats/code/__pycache__/

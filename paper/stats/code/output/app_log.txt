@@ -1,0 +1,23 @@
+generated N=5,000,000 episodes, 35,526 deaths (crude rate 9.47/1000 py) in 1.4s
+dropped 159,464 episodes in 322 zero-event municipality-year groups (separation)
+absorbed groups: 9,678; cell-level cells: 96; k=16, p=2
+tilted+absorbed fit: 11.2s, 8 Newton iterations, converged=True, ll=-177708.8
+  income     -0.1802  (se 0.0048)   truth -0.1800
+  pollution  +0.0490  (se 0.0051)   truth +0.0600
+  _cons      -6.2154  (se 0.0534)   truth 
+  edu1       -0.1329  (se 0.0133)   truth -0.1200
+  edu2       -0.2699  (se 0.0150)   truth -0.2500
+  edu3       -0.3985  (se 0.0181)   truth -0.4000
+  female     -0.4551  (se 0.0112)   truth -0.4500
+  age1       +0.3747  (se 0.0697)   truth +0.4000
+  age2       +0.7981  (se 0.0638)   truth +0.8000
+  age3       +1.2472  (se 0.0586)   truth +1.2000
+  age4       +1.6022  (se 0.0602)   truth +1.6000
+  age5       +2.0312  (se 0.0574)   truth +2.0000
+  age6       +2.4656  (se 0.0552)   truth +2.4000
+  age7       +2.8182  (se 0.0540)   truth +2.8000
+  age8       +3.2002  (se 0.0553)   truth +3.2000
+  age9       +3.6162  (se 0.0550)   truth +3.6000
+  age10      +4.0080  (se 0.0547)   truth +4.0000
+  age11      +4.4187  (se 0.0538)   truth +4.4000
+subpopulation cross-check (n=97,723, 196 absorbed groups): max |tilted - dense| = 4.01e-11; tilted 0.1s vs dense 3.0s (41x)
