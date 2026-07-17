@@ -69,16 +69,18 @@
 \newcommand{\bP}{\mathbf{P}}
 \newcommand{\bzero}{\mathbf{0}}
 
-\title{Computationally Efficient Estimation of High-Dimensional
-Exponential Family Models via Tilted Cell Moments and Alternating
-Projections}
+\title{Exact Estimation of Exponential Family Models on Massive
+Mixed Categorical--Continuous Data via Tilted Cell Moments}
 
 \author{Andreas Ljungstr\"om\thanks{Swedish Institute for Social Research
 (SOFI), Stockholm University, SE-106 91 Stockholm, Sweden.
 E-mail: \texttt{andreas.ljungstrom@sofi.su.se}.  Reproduction code for all
 numerical results is available at
 \url{https://github.com/andreasljungstrm/stpois} (directory
-\texttt{paper/stats/code}).}\\
+\texttt{paper/stats/code}).  An online supplement contains the companion
+theory (convergence of nonlinear fixed-effect absorption and its rates,
+high-dimensional asymptotics, Firth and penalized extensions) and its
+proofs and simulations.}\\
 \small Swedish Institute for Social Research, Stockholm University}
 
 \date{July 2026}
@@ -89,60 +91,46 @@ numerical results is available at
 
 \begin{abstract}
 \noindent
-Generalized linear models on register-scale data sets combine two
-structures that jointly defeat standard maximum-likelihood software: a
-high-dimensional categorical part---detailed demographic strata and one or
-more fixed-effect factors with thousands to millions of
-levels---and a low-dimensional continuous part that varies within the
-resulting cells.  When every covariate is categorical, the log likelihood
-collapses onto cell aggregates and estimation is essentially free; a
-single continuous covariate destroys this collapse.  We develop a
-framework, \emph{tilted cell moments}, that restores the computational
-benefit of the cell structure without any approximation: for exponential
-dispersion families we prove that the exact score vector and information
-matrix are sums of low-order moments of an exponentially tilted
-within-cell measure, so that every Newton or Fisher-scoring iteration
-requires one $O(Np_c^2)$ pass over the microdata, with $p_c$ the number of
-continuous covariates only, followed by algebra on the $J$ cells.  For
-additional fixed-effect factors we analyze the nonlinear block
-Gauss--Seidel scheme that alternates closed-form profile updates of the
-absorbed effects with tilted-moment Newton steps.  We prove its global
-convergence to the maximum-likelihood estimate for canonical and, more
-generally, log-concave links---resolving a gap repeatedly noted in the
-applied literature---and derive its local linear rate: for two absorbed
-factors it equals the squared Friedrichs angle cosine between the
-weighted fixed-effect subspaces (one minus the spectral gap of a
-weighted bipartite graph Laplacian), and for any number of factors it is
-the spectral radius of a level-space sweep operator determined by the
-pairwise weighted cross-tabulations alone, computable before touching
-the microdata, with a product-of-sines certificate as an a priori
-bound.  We then develop asymptotic theory in three regimes: fixed
-dimension; a diverging number of cells with
-$q_N^3/N \to 0$; and, for the Poisson family, the proportional regime
-$J/N \to c \in (0,1)$ with bounded cell sizes, where a conditional-likelihood
-representation of the profile likelihood yields consistency, asymptotic
-normality, and valid cluster-robust inference with no
-incidental-parameter bias; for the logit, where the representation
-fails, we quantify the resulting $O(1/m)$ bias and show that the exact
-conditional estimator repairs it at the same cell-collapsed cost.
-Extensions cover logistic and gamma models,
-$\ell_1/\ell_2$-penalized estimation by proximal Newton at cell-collapsed
-cost, and Firth's bias-reducing adjustment computed inside the tilted
-accumulation as a principled response to separation.  Simulations confirm
-that the tilted iterates equal the full-data Newton iterates to machine
-precision at a small fraction of the cost, that observed convergence
-rates match the spectral predictions to three decimals for two and three
-absorbed factors alike, and that nominal $95\%$ intervals attain
-$94$--$96\%$ coverage even with one fixed effect per two observations.  A register-scale case study with five million person-year
-episodes and $10{,}000$ absorbed municipality--year effects runs in
-seconds on a laptop.  The framework is implemented in the Stata package
-\texttt{stpois} and in an open-source reference implementation.
+When every covariate of a generalized linear model is categorical, the
+log likelihood collapses onto within-cell aggregates of the
+cross-classification, and estimation on the $J$ cells reproduces the
+microdata maximum-likelihood estimator at a fraction of the cost.  A
+single continuous covariate destroys this collapse: we show that
+computing the likelihood then requires, in effect, the entire
+within-cell empirical distribution of the continuous covariates, so no
+fixed-dimensional cell summary suffices.  The contribution of this paper
+is that a moving summary does: for exponential dispersion families, the
+exact score vector and Fisher information matrix at any parameter value
+are linear combinations of three low-order moments of an
+\emph{exponentially tilted} within-cell measure---for the Poisson
+family, an Esscher transform of the within-cell exposure measure.
+Consequently every Newton or Fisher-scoring iteration is computable from
+one streaming pass over the microdata at $O(Np_c^2)$ cost, with $p_c$
+the number of continuous covariates only, followed by algebra on the
+cells; the resulting iterates are algebraically \emph{identical} to
+full-design iterations, not approximations to them.  We give the
+streaming algorithm, its complexity and numerical properties, and exact
+cell-accumulated robust and cluster-robust covariance estimators.
+Experiments verify iterate-for-iterate agreement with dense Newton at
+$10^{-13}$--$10^{-15}$ across Poisson, logistic, and gamma models while
+running one to two orders of magnitude faster than dense and
+general-purpose implementations and several times faster than a
+sparse-design IRLS, with exactness unaffected by severe cell imbalance
+or rare events.  Two applications---a logistic on-time-performance model
+for the 336{,}776 flights of the public \texttt{nycflights13} data, and
+a register-scale synthetic epidemiology study with five million
+person-year episodes and $10{,}000$ absorbed municipality--year
+effects---fit with inference in seconds.  An online supplement develops
+companion theory: global convergence and sharp local rates for the
+nonlinear alternating-projections absorption of high-dimensional fixed
+effects, asymptotics up to the proportional regime $J/N \to c$, and
+Firth, penalized, and conditional-likelihood extensions.
 \end{abstract}
 
 \medskip
 \noindent\textbf{Keywords:} generalized linear models; exponential
-tilting; alternating projections; block coordinate ascent;
-incidental parameters; profile likelihood; separation.
+tilting; sufficient statistics; streaming algorithms; high-dimensional
+fixed effects; register data.
 
 \newpage
 
@@ -153,23 +141,24 @@ incidental parameters; profile likelihood; separation.
 A large share of applied statistical work now takes place on data sets
 whose size is set not by a sampling budget but by an administrative
 process: full-population registers, insurance claim files, electronic
-health records, digital trace data.  Models fitted to such data are
-rarely exotic---Poisson regression for event rates, logistic regression
-for binary outcomes, gamma regression for costs---but their covariate
-structure has a characteristic shape.  A small number of continuous
-covariates of scientific interest (income, exposure, a polygenic score)
-appear alongside a rich categorical apparatus: demographic strata such as
-age band $\times$ sex $\times$ education, and one or more fixed-effect
-factors---region, calendar year, firm, hospital, sequencing batch---whose
-level counts run from hundreds to millions.  The cross-classification of
-the categorical covariates partitions the $N$ observations into $J$
-\emph{cells}, and it is the interplay between $N$, $J$, and the continuous
-covariates that determines whether maximum-likelihood estimation is a
-routine computation or an overnight batch job.
+health records, transportation and digital trace data.  The models
+fitted to such data are rarely exotic---Poisson regression for event
+rates, logistic regression for binary outcomes, gamma regression for
+costs---but their covariate structure has a characteristic shape.  A
+small number of continuous covariates of scientific interest (income,
+exposure, a polygenic score) appear alongside a rich categorical
+apparatus: demographic strata such as age band $\times$ sex $\times$
+education, operational strata such as carrier $\times$ route $\times$
+month, and often fixed-effect factors with thousands of levels.  The
+cross-classification of the categorical covariates partitions the $N$
+observations into $J$ cells, and it is the interplay between $N$, $J$,
+and the continuous covariates that determines whether
+maximum-likelihood estimation is an interactive computation or an
+overnight batch job.
 
 Two classical observations frame the problem.  First, when \emph{every}
-covariate is categorical, the exponential-family log likelihood depends on
-the data only through within-cell aggregates; estimation on the $J$
+covariate is categorical, the exponential-family log likelihood depends
+on the data only through within-cell aggregates; estimation on the $J$
 collapsed cells reproduces the microdata maximum-likelihood estimator
 (MLE) exactly, and the per-iteration cost drops from $O(Nq^2)$ to
 $O(Jq^2)$ for $q$ parameters.  This is the standard device behind
@@ -177,157 +166,101 @@ register-based rate modeling in epidemiology and demography
 \citep{holford1980,laird1981,clayton1993}.  Second, the collapse is
 fragile: a single continuous covariate destroys it, because the cumulant
 function of the family is strictly convex, so cell sums of nonlinear
-transforms of the linear predictor cannot be recovered from cell means
-(Section~\ref{sec:sufficiency}).  Analysts then face an unattractive
-choice between discretizing the continuous covariates---introducing bias
-that is hard to quantify---and abandoning the cell structure entirely,
-paying the full $O(Nq^2)$ price per iteration even though most of the $q$
-parameters are attached to covariates that are constant within cells.
+transforms of the linear predictor cannot be recovered from cell means.
+Analysts then face an unattractive choice between discretizing the
+continuous covariates---introducing bias that is hard to quantify---and
+abandoning the cell structure entirely, paying the full $O(Nq^2)$ price
+per iteration even though most of the $q$ parameters are attached to
+covariates that are constant within cells.  General-purpose GLM
+software pays this price by default; software for high-dimensional
+fixed effects \citep{guimaraes2010,gaure2013,correia2020,berge2018,
+stammann2018} removes \emph{dummy-coded factors} from the design by
+demeaning, but continuous-by-cell interplay of the kind above is not a
+demeaning problem, and the cell structure of the categorical part goes
+unexploited.
 
-A separate literature addresses the fixed-effect factors.  For linear
-models, absorbing high-dimensional fixed effects by within-group demeaning
-is classical, and the method of alternating projections extends it to
-multiple factors \citep{halperin1962,gaure2013}.  For generalized linear
-models (GLMs), \citet{guimaraes2010} introduced an iteratively reweighted
-scheme whose inner linear problem is solved by weighted alternating
-projections; refinements are implemented in widely used software:
-\texttt{ppmlhdfe} in Stata \citep{correia2020}, \texttt{fixest} and its
-predecessor \texttt{FENmlm} in R \citep{berge2018}, and \texttt{alpaca}
-\citep{stammann2018}.  A conspicuous feature of this literature is that
-the \emph{nonlinear} iteration---the outer loop that alternates fixed-effect
-updates with covariate updates on the actual GLM likelihood---is used
-billions of times a year without a convergence guarantee.
-\citet{correia2020} prove correctness of the inner linear solves;
-\citet{berge2018} reports that the profile Gauss--Seidel ``converges in
-practice''; the documentation of every major implementation, and the
-software article accompanying the Stata command \texttt{stpois} that
-implements the algorithms studied here, state explicitly that formal
-guarantees for the nonlinear cycle are not available.
+This paper develops a resolution that is exact rather than approximate.
+The starting point is a precise statement of what breaks
+(Proposition~\ref{prop:sufficiency}): with continuous covariates, any
+statistic from which the likelihood \emph{function} can be evaluated
+must determine the entire within-cell empirical distribution of the
+continuous covariates---the within-cell Laplace transform appears in the
+likelihood, and Laplace transforms determine measures.  No fixed cell
+summary can therefore support the full likelihood surface.  The
+contribution is that estimation does not need the full surface; it needs
+score and curvature \emph{at the current iterate}, and these have an
+exact finite representation.  Theorem~\ref{thm:tilted} shows that for
+exponential dispersion families with canonical link, the score vector
+and Fisher information at any parameter value are linear combinations of
+the zeroth-, first-, and second-order moments of an \emph{exponentially
+tilted probability measure} on each cell---for the Poisson family, an
+Esscher transform of the within-cell empirical exposure measure,
+connecting the construction to classical tilting ideas in saddlepoint
+approximation and empirical likelihood
+\citep{esscher1932,daniels1954,efron1981,jensen1995,kitamura1997}.  The
+tilt is the right \emph{dynamic} object: it changes with the iterate,
+which is exactly why a fixed collapse fails and a per-iteration one
+succeeds.  Corollary~\ref{cor:complexity} converts the identity into
+complexity: each Newton iteration costs one streaming $O(N(p^2+p))$
+pass over the microdata---$p$ the number of continuous columns
+only---plus $O(J(k^2+kp))$ cell algebra, against $O(N(p+k)^2)$ for the
+full design, a saving that grows quadratically in the richness $k$ of
+the categorical structure.  Because the identity is exact, the
+accelerated iterates are \emph{identical} to full-design Newton---not
+close, identical---which Section~\ref{sec:sim-validation} verifies at
+the $10^{-13}$--$10^{-15}$ level, iterate by iterate, across Poisson,
+logistic, and gamma models.  Fisher scoring under non-canonical links
+has the same structure (Proposition~\ref{prop:noncanonical}); for the
+gamma--log family the tilt weights are identically one and the moments
+are constant across iterations.
 
-This article develops the missing theory and, in doing so, unifies the
-cell-collapse and fixed-effect-absorption devices into a single framework
-with quantified computational and statistical properties.  Our
-contributions are fourfold.
+The second half of the paper is deliberately computational.
+Section~\ref{sec:algorithms} gives the streaming algorithm and its
+implementation envelope: numerical safeguards (step-halving,
+log-domain evaluation, rank-deficiency fallbacks), memory layout and
+parallelization of the bandwidth-bound accumulation pass, exact
+cell-accumulated robust and cluster-robust covariance estimators, and
+the combination with absorbed fixed-effect factors, for which the
+companion theory---global convergence of the nonlinear
+alternating-projections cycle, its local rates for two and for three or
+more factors, and high-dimensional asymptotics up to one fixed effect
+per two observations---is developed in the online supplement.
+Section~\ref{sec:simulations} contains the experiments: iterate-level
+exactness and per-iteration cost against dense Newton
+(Section~\ref{sec:sim-validation}); total-time benchmarks against
+\texttt{statsmodels} (the standard general-purpose Python GLM) and
+against a sparse-design IRLS, the natural ``just use sparse matrices''
+alternative (Section~\ref{sec:sim-baselines}); and sensitivity to
+severe cell imbalance and rare events
+(Section~\ref{sec:sim-sensitivity}).  Section~\ref{sec:applications}
+applies the method twice: to the public \texttt{nycflights13} data
+(a logistic on-time-performance model with a
+carrier--origin--destination--month cell structure, verified
+coefficient-for-coefficient against \texttt{statsmodels} at a tenth of
+its cost), and to a fully reproducible register-scale synthetic study
+(five million person-year episodes, $10{,}000$ absorbed
+municipality--year effects, cluster-robust inference, seconds on one
+core).  Section~\ref{sec:discussion} summarizes and points to the
+supplement's theory.  Proofs of the main-paper results are in the
+appendix; every number regenerates from short scripts included with the
+manuscript.
 
-\emph{First: an exact tilted-moment representation} (Section~\ref{sec:tilted}).
-For exponential dispersion families with canonical link we prove
-(Theorem~\ref{thm:tilted}) that the full-model score vector and Fisher
-information matrix are, without approximation, linear combinations of the
-zeroth-, first-, and second-order moments of an \emph{exponentially tilted
-probability measure} on each cell---for the Poisson family, an Esscher
-transform of the within-cell empirical exposure measure, connecting the
-construction to the classical tilting literature
-\citep{esscher1932,efron1981,jensen1995,kitamura1997}.  Consequently each
-Newton iteration is computable in a single pass over the microdata whose
-cost involves only the $p_c$ continuous columns, reducing the
-per-iteration complexity from $O(N(p_c+k)^2)$ to $O(Np_c^2 + Jk^2)$
-(Corollary~\ref{cor:complexity}), where $k$ is the number of cell-level
-parameters.  The resulting iterates are \emph{identical} to full-data
-Newton---not close, identical---which we verify to machine precision in
-Section~\ref{sec:sim-validation}.  Fisher scoring under non-canonical
-links has the same structure (Proposition~\ref{prop:noncanonical}).
-
-\emph{Second: convergence theory for nonlinear alternating projections}
-(Section~\ref{sec:hdfe}).  We formulate fixed-effect absorption as exact
-block coordinate ascent on the (concave, for canonical links) log
-likelihood, with closed-form profile updates for the absorbed blocks and
-damped tilted-moment Newton steps for the covariate block.  Theorem~\ref{thm:global}
-establishes global convergence to the MLE whenever the MLE exists,
-under conditions that are sharp in the sense that failure of each
-corresponds to a recognizable data pathology (separation, disconnected
-designs).  The theorem covers canonical links and, beyond them, the full class of
-log-concave links in the sense of \citet{pratt1981}---so the guarantee
-extends to gamma--log and probit models, and we state explicitly where
-it stops.  Theorem~\ref{thm:rate} derives the local convergence rate:
-the iteration contracts linearly with factor equal to the spectral
-radius of the block Gauss--Seidel operator of the information matrix at
-the optimum; for two absorbed factors this radius equals
-$\cos^2\theta_F$, the squared cosine of the Friedrichs angle between the
-weighted fixed-effect subspaces \citep{aronszajn1950,kayalar1988,deutsch2001},
-and Corollary~\ref{cor:bipartite} identifies $1-\cos^2\theta_F$ with the
-spectral gap of a weighted bipartite graph built from the two factors---%
-making precise, and quantitative, the folklore that alternating
-projections slow down when fixed effects are ``highly correlated''
-\citep{gaure2013}.  For three or more absorbed factors, where the
-alternating-projections literature offers only norm bounds,
-Theorem~\ref{thm:multiG} shows that the exact rate is nevertheless a
-computable object: the information blocks of the absorbed factors are
-determined by their pairwise weighted cross-tabulations, the flat
-directions are semisimple eigenvalue-one fixed points of the sweep
-operator, and the rate is the largest remaining eigenvalue
-modulus---obtainable by power iteration on the level space before
-touching the microdata, with a Friedrichs product-of-sines certificate
-\citep{smith1977,deutschhundal1997} as an a priori bound and an exact
-identification diagnostic as a by-product.  Simulations in
-Section~\ref{sec:sim-rate} match the predicted rates to three decimal
-places for $G = 2$ and $G = 3$ alike.
-
-\emph{Third: asymptotic theory, including high-dimensional regimes}
-(Section~\ref{sec:asymptotics}).  Because the tilted-moment estimator
-\emph{is} the MLE, fixed-dimension consistency, asymptotic normality, and
-efficiency follow from classical GLM theory
-\citep{fahrmeir1985} (Theorem~\ref{thm:classical}).  The statistically
-interesting regimes are high-dimensional.  When the total parameter count
-$q_N = p + k_N$ diverges, we prove consistency in the intrinsic
-(information) norm and asymptotic normality of fixed contrasts under a
-balanced-leverage condition and $q_N^3/N \to 0$
-(Theorem~\ref{thm:diverging}), by a self-contained argument in the spirit
-of \citet{portnoy1988} and \citet{heshao2000}.  In the \emph{proportional}
-regime---one absorbed effect per cell, cells of bounded size, $J/N \to c
-\in (0,1)$---no such expansion is possible and incidental-parameter bias
-is the default expectation \citep{neyman1948,lancaster2000}.  For the
-Poisson family we prove that the profile (concentrated) likelihood
-coincides, up to a constant, with the conditional likelihood obtained by
-conditioning on cell totals (Lemma~\ref{lem:conditional}), a multinomial
-likelihood with fixed-dimension parameter; Theorem~\ref{thm:proportional}
-then delivers consistency, asymptotic normality, attainment of the
-semiparametric efficiency bound for the fixed-effects model, and
-consistency of both the profile-information and the cell-clustered
-sandwich variance estimators, all at $J/N \to c$.  The contrast with the
-logit family, where the profile and conditional likelihoods differ and
-bias of order $1/m$ persists \citep{andersen1970,fernandezval2016}, is
-developed in full: we quantify the failure (the $m = 2$ profile MLE
-approaches Andersen's $2\gamma_0$ limit) and show that the exact
-conditional-logit estimator of \citet{chamberlain1980}, computed
-cellwise via symmetric-function recursions, removes it within the same
-framework (Section~\ref{sec:sim-logit}).  Simulations with one fixed
-effect per \emph{two} observations show nominal $95\%$ intervals
-covering at $94$--$96\%$ (Section~\ref{sec:sim-highdim}).
-
-\emph{Fourth: extensions that inherit the computational structure}
-(Section~\ref{sec:extensions}).  Logistic and gamma regression fit the
-framework directly---for the gamma family with log link the Fisher weights
-are identically one, so the tilted moments reduce to untilted cell
-moments.  Ridge and lasso penalties on the continuous coefficients
-combine with proximal Newton so that each coordinate-descent sweep costs
-$O((p_c+k)^2)$, independent of $N$ (Proposition~\ref{prop:penalized}).
-Firth's bias-reducing adjusted score, the principled remedy for
-separation, is computable inside the same single pass
-(Proposition~\ref{prop:firth}), and Section~\ref{sec:sim-separation}
-shows it resolving quasi-separation that defeats the MLE in $40\%$ of
-small-sample replications.
-
-Section~\ref{sec:application} applies the machinery to a fully
-reproducible register-scale case study in spatial
-epidemiology---five million person-year episodes, $10{,}000$ absorbed
-municipality--year effects, a $96$-cell demographic design, and two
-continuous covariates---which fits, with cluster-robust standard errors,
-in under half a minute on a laptop, and whose dense-design counterpart
-would require a terabyte-scale matrix.  Section~\ref{sec:discussion}
-discusses limitations and software.  All proofs are in the Appendix; all
-numerical results are generated by short Python scripts included with the
-manuscript and re-runnable end to end.
-
-Throughout, the point of view is that of \citet{correia2020},
-\citet{gaure2013}, and the broader computational-statistics literature on
-estimating structured GLMs at scale; what is new here is (i) the exact
-tilted-moment decomposition and its complexity consequences, (ii) the
-convergence theory for the nonlinear absorption cycle, and (iii) the
-high-dimensional asymptotics, in particular the proportional-regime
-result and its variance theory.
+Relative to the literature, the closest computational ideas are the
+collapsed sufficient statistics of classical log-linear rate modeling
+\citep{holford1980,clayton1993}, which the tilted moments generalize
+from ``all categorical'' to ``categorical plus continuous''; and the
+alternating-projections HDFE stack
+\citep{guimaraes2010,gaure2013,correia2016,correia2020,berge2018},
+which removes dummy factors but streams the full non-absorbed design
+through every IRLS step---the two devices are complementary, and
+Section~\ref{sec:absorb-impl} combines them.  The framework is
+implemented in the Stata command \texttt{stpois} for the Poisson
+event-history case and in an open-source Python reference
+implementation used for all experiments here.
 
 % =========================================================================
-\section{Exponential family models and tilted cell moments}\label{sec:tilted}
+\section{Exponential family models and the failure of ordinary
+collapse}\label{sec:tilted}
 % =========================================================================
 
 \subsection{Model and notation}\label{sec:model}
@@ -429,6 +362,10 @@ next subsection shows that the required functionals nevertheless have a
 special structure: for each trial value of $\bgamma$ they are three
 low-order moments of a tilted measure, computable in one linear pass.
 
+% =========================================================================
+\section{Tilted cell moments}\label{sec:tilted-main}
+% =========================================================================
+
 \subsection{Exponentially tilted cell moments}\label{sec:tilted-moments}
 
 \begin{definition}[Tilted within-cell measures]\label{def:tilt}
@@ -529,9 +466,13 @@ covariance $\nabla^2 K_j$ plus a between-cell term.  In particular the
 identification of $\bgamma$ rests exactly on
 $\sum_j M_j^{(0)} \nabla^2 K_j(\bgamma) \succ \bzero$: continuous
 covariates are identified through their \emph{within-cell, tilt-weighted}
-variation, a fact that the block structure displays and that drives the
-Schur-complement profile Hessian used throughout
-Sections~\ref{sec:hdfe}--\ref{sec:asymptotics}.
+variation---a fact that the block structure displays, and that drives
+the Schur-complement profile Hessians used throughout the companion
+theory in the online supplement.  (When a continuous covariate is
+constant within cells---a route-level distance, say---it remains
+identified through between-cell variation as long as the cell-level
+design $\bw_j$ is not saturated; Section~\ref{sec:app-flights}
+exercises this case.)
 
 \begin{corollary}[Per-iteration complexity]\label{cor:complexity}
 One Newton iteration computed via Theorem~\ref{thm:tilted} costs
@@ -558,7 +499,7 @@ are large but smaller than the FLOP ratio.  Second, the accumulations are
 plain segmented sums---\texttt{bincount} operations---so they
 parallelize and stream trivially; no $N \times q$ design matrix is ever
 formed, which converts a memory-infeasible problem
-(Section~\ref{sec:application}) into an in-cache one.
+(Section~\ref{sec:app-register}) into an in-cache one.
 
 \subsection{Non-canonical links}\label{sec:noncanonical}
 
@@ -586,697 +527,111 @@ moments of the covariates, fixed across iterations, so after the first
 pass each subsequent iteration costs $O(N p) + O(Jk^2)$ only.
 \end{proposition}
 
+
+\subsection{Families in scope}\label{sec:families-main}
+
+Three instances cover most applied use and are carried through the
+experiments.  \emph{Poisson with log link} (canonical): the tilt is the
+$\bdelta$-free Esscher transform \eqref{eq:esscher}, and the
+event-history offset $o_i = \log t_i$ makes this the estimator of
+piecewise-constant hazard models on episode-split survival data
+\citep{holford1980,whitehead1980}.  \emph{Logistic} (canonical): the
+tilt weights $\omega_i = \mu_i(1-\mu_i)$ concentrate the within-cell
+measure on observations near the decision boundary and depend on
+$\bdelta$, so the moments are re-accumulated each iteration---which the
+single pass does anyway.  \emph{Gamma with log link} (non-canonical,
+Proposition~\ref{prop:noncanonical}): the Fisher weights are identically
+one, the moments are constant across iterations, and after the first
+pass each iteration costs $O(Np) + O(Jk^2)$.  We deliberately stop the
+catalogue here; the point is the structure, not an enumeration.
 % =========================================================================
-\section{High-dimensional fixed effects and nonlinear alternating
-projections}\label{sec:hdfe}
+\section{Algorithms and implementation}\label{sec:algorithms}
 % =========================================================================
 
-\subsection{Profile formulation}\label{sec:profile}
+\subsection{The streaming pass}\label{sec:streaming}
 
-Beyond the cell design, applications routinely require one or more
-fixed-effect factors whose level counts preclude even cell-level
-treatment: firms, hospitals, zip-code--year interactions.  Augment the
-linear predictor with $G$ absorbed factors,
-\begin{equation}\label{eq:linpred-fe}
-\eta_i = \bgamma'\bx_i + \bdelta'\bw_{j(i)} + \sum_{g=1}^{G}
-  \alpha^{(g)}_{g(i)} + o_i ,
-\end{equation}
-where factor $g$ has $J_g$ levels with level map $g(i)$ and effect vector
-$\balpha^{(g)} \in \R^{J_g}$, and $J_1 + \dots + J_G$ may be of order
-$N$.  The full parameter is
-$\btheta = (\bbeta, \balpha)$ with $\bbeta = (\bgamma, \bdelta)$.  The
-design has a known null space $\mathcal{K} \subset \R^{q + \sum_g J_g}$
-(at least the $G$ dimensions of shifts between the factors' levels and
-the intercept, more if the factor graph is disconnected); all statements
-below are on the quotient $\R^{q+\sum J_g}/\mathcal{K}$, realized in
-practice by a normalization.  The estimator of interest is the MLE of
-$\bbeta$ with $\balpha$ concentrated out: the profile likelihood
-$\ell_p(\bbeta) = \max_{\balpha} \ell(\bbeta, \balpha)$.
-
-For the Poisson family the inner maximization has a closed-form
-coordinate solution: given all other parameters, the optimal effect of
-level $a$ of factor $g$ is
-\begin{equation}\label{eq:closed-form}
-\alpha^{(g)}_a
- = \log \frac{\sum_{i : g(i) = a} y_i}
-             {\sum_{i : g(i) = a} \exp\!\left(\eta_i - \alpha^{(g)}_a\right)},
-\end{equation}
-the log of the ratio of observed to expected-at-zero-effect events, which
-is the multiplicative-update rule used by \texttt{FENmlm}/\texttt{fixest}
-\citep{berge2018} and, in IRLS-linearized form, by \texttt{ppmlhdfe}
-\citep{correia2020}.  Cycling \eqref{eq:closed-form} over factors is a
-nonlinear block Gauss--Seidel scheme; combined with tilted-moment Newton
-steps for $\bbeta$ it yields Algorithm~\ref{alg:absorb}.
+Algorithm~\ref{alg:tilted} states the method operationally.  Its
+preprocessing is one factorization of the categorical covariates into
+cell identifiers $j(i)$ and one construction of the $J \times k$
+cell-level design $\bW$; both are $O(N)$ given a sort or hash of the
+categorical columns, and both are shared across models on the same
+cells.
 
 \begin{algorithm}[t]
-\caption{Tilted-moment Newton with absorbed factors (nonlinear block
-Gauss--Seidel)}\label{alg:absorb}
+\caption{Tilted-moment Newton / Fisher scoring}\label{alg:tilted}
 \begin{algorithmic}[1]
-\State Initialize $\bbeta_0$, $\balpha_0 = \bzero$; drop observations in
-absorbed groups with no events (Section~\ref{sec:separation}).
+\State Precompute cell ids $j(i)$, cell design $\bW \in \R^{J \times k}$,
+  continuous columns $\bX \in \R^{N \times p}$, offsets $o_i$;
+  initialize $\btheta_0 = (\bgamma_0, \bdelta_0)$.
 \Repeat
-  \Repeat \Comment{inner loop: exact block maximization over $\balpha$}
-    \For{$g = 1, \dots, G$}
-      \State update $\balpha^{(g)}$ by the closed-form profile rule
-        \eqref{eq:closed-form}
-    \EndFor
-  \Until{$\max_g \|\Delta\balpha^{(g)}\|_\infty < \tau_{\mathrm{in}}$}
-  \State accumulate tilted moments \eqref{eq:moments} at
-    $(\bbeta_t, \balpha_t)$ in one microdata pass
-  \State $\bbeta_{t+1} \gets \bbeta_t + \lambda_t\, \bF^{-1}\bU$
-    with $\lambda_t \in \{1, \tfrac12, \tfrac14, \dots\}$ chosen by
-    backtracking (Armijo) on $\ell(\cdot, \hat\balpha(\cdot))$
-\Until{$\max_\ell |\Delta\beta_\ell| / (1 + |\beta_\ell|) < \tau$}
+  \State \emph{Stream over $i = 1, \dots, N$:} compute
+    $\eta_i = \bgamma'\bx_i + (\bW\bdelta)_{j(i)} + o_i$, the weight
+    $\omega_i$, and the residual $r_i$; accumulate
+    $M^{(0)}_{j(i)} \mathrel{+}= \omega_i$;\;
+    $\mathbf{m}_{j(i)} \mathrel{+}= \omega_i \bx_i$;\;
+    $R_{j(i)} \mathrel{+}= r_i$;\;
+    $\bU_\gamma \mathrel{+}= r_i \bx_i$;\;
+    $\bQ \mathrel{+}= \omega_i \bx_i \bx_i'$.
+  \State \emph{Cell assembly:} $\bU_\delta = \bW'\mathbf{R}$;\;
+    $\bF_{\gamma\delta} = \mathbf{m}'\bW$;\;
+    $\bF_{\delta\delta} = \bW'\diag(M^{(0)})\bW$;\;
+    $\bF_{\gamma\gamma} = \bQ$.
+  \State Solve the $(p{+}k)$-dimensional system
+    $\bF \Delta = \bU$; update
+    $\btheta \gets \btheta + \lambda \Delta$ with backtracking
+    $\lambda \in \{1, \tfrac12, \dots\}$ on the log likelihood.
+\Until{$\max_\ell |\Delta\theta_\ell|/(1 + |\theta_\ell|) < \tau$}
 \end{algorithmic}
 \end{algorithm}
 
-Algorithm~\ref{alg:absorb} is, up to the tilted-moment acceleration of
-the $\bbeta$-step, the algorithm used across the applied HDFE--GLM
-software ecosystem, and it is the algorithm for which the literature
-records no convergence guarantee: \citet{correia2020} prove convergence
-of the \emph{linear} inner solves they employ, \citet{berge2018} and the
-\texttt{stpois} software article report empirical convergence of the
-nonlinear cycle, and \citet{gaure2013} analyzes the linear case.  The
-next two subsections close this gap.
+By Theorem~\ref{thm:tilted}(iv) the iterate sequence is identical to
+full-design Newton from the same start; every design decision below
+concerns constants, not correctness.
 
-\subsection{Global convergence}\label{sec:global}
+\subsection{Numerical safeguards}\label{sec:stability}
 
-We impose:
+Three matter in practice.  (i) \emph{Monotonicity}: the backtracking
+line search on the log likelihood guarantees ascent and terminates,
+since the Newton direction of a positive-definite system is an ascent
+direction; in well-conditioned problems the full step is accepted after
+the first iterations and convergence is quadratic.  (ii) \emph{Log-domain
+evaluation}: likelihood and mean evaluations use \texttt{log1p} /
+\texttt{logaddexp}-style kernels so that extreme linear predictors
+(produced, e.g., en route to a separated fit) yield $-\infty$ log
+likelihoods rather than overflow.  (iii) \emph{Rank deficiency}: if the
+assembled $\bF$ is singular---collinear cell-level columns, or vanishing
+weights under quasi-separation---the solve falls back to a minimum-norm
+(pseudoinverse) direction and the iteration runs to its cap with the
+non-convergence flagged, never silently; separation is a property of the
+data, not of the algorithm, and Section~S3 of the supplement develops
+the Firth-adjusted variant that restores a finite maximizer inside the
+same pass.
 
-\begin{assumption}\label{ass:canonical}
-The link is canonical and $b$ is strictly convex and twice continuously
-differentiable on $\Theta = \R$.
-\end{assumption}
+\subsection{Memory layout and parallelism}\label{sec:memory}
 
-\begin{assumption}\label{ass:mle-exists}
-The MLE exists: $\sup_{\btheta} \ell$ is attained at some
-$\btheta^\ast$ (unique modulo $\mathcal{K}$).
-\end{assumption}
-
-\begin{assumption}\label{ass:blocks}
-(i) Each absorbed group contains at least one observation with $y_i$ in
-the interior of the convex hull of the support of the family (for
-Poisson and binomial: at least one $y_i > 0$, and for binomial also one
-$y_i < n_i$), so that each one-dimensional block likelihood in
-\eqref{eq:closed-form} attains a finite maximum; (ii) the $\bbeta$-block
-information $\bF_{\bbeta\bbeta}(\btheta)$ is nonsingular on the initial
-superlevel set $\{\ell \ge \ell(\btheta_0)\}$.
-\end{assumption}
-
-Assumption~\ref{ass:mle-exists} is a data condition---absence of
-separation---with a long literature of verifiable characterizations
-\citep{haberman1974,wedderburn1976,albert1984,santossilva2010,correia2019};
-Section~\ref{sec:separation} discusses enforcement and the Firth
-alternative when it fails.  Assumption~\ref{ass:blocks}(i) is enforced
-constructively by the drop rule of Algorithm~\ref{alg:absorb}, mirroring
-standard practice \citep{correia2020}.
-
-\begin{theorem}[Global convergence of nonlinear alternating
-projections]\label{thm:global}
-Under Assumptions~\ref{ass:canonical}--\ref{ass:blocks}, the iterates
-$\btheta_t = (\bbeta_t, \balpha_t)$ of Algorithm~\ref{alg:absorb}
-satisfy: (i) $\ell(\btheta_t)$ is nondecreasing and converges to
-$\sup \ell = \ell(\btheta^\ast)$; (ii) $[\btheta_t] \to [\btheta^\ast]$
-in the quotient $\R^{q+\sum J_g}/\mathcal{K}$; in particular
-$\bbeta_t \to \bbeta^\ast$ whenever the normalization places the flat
-directions in the absorbed blocks; and (iii) the same conclusions hold if
-the $\bbeta$-update is replaced by exact block maximization, and for any
-cyclic or essentially-cyclic ordering of the blocks; and (iv)
-Assumption~\ref{ass:canonical} may be weakened to the requirement that
-the link be twice continuously differentiable with each per-observation
-log-likelihood contribution strictly concave in its linear predictor
-(a \emph{log-concave link}; \citealp{pratt1981}), provided the
-$\bbeta$-step is an Armijo-damped ascent step with a symmetric
-preconditioner whose eigenvalues are bounded within $[\underline\lambda,
-\bar\lambda] \subset (0,\infty)$ on the initial superlevel
-set---Fisher scoring in particular.
-\end{theorem}
-
-Part (iv) settles the scope of the guarantee beyond canonical links.
-Log-concavity of the per-observation contribution in $\eta_i$ is exactly
-the condition under which the proof's three ingredients
-survive---concavity of $\ell$ in $\btheta$, unique finite block
-maximizers, and sufficient ascent of a preconditioned gradient
-step---and it is satisfied well beyond the canonical family:
-\citet{pratt1981} characterizes the log-concave links, which include
-the gamma family with log link (each contribution
-$-\nu\{y_i e^{-\eta_i} + \eta_i\}$ has second derivative
-$-\nu y_i e^{-\eta_i} < 0$), the binomial probit, and the binomial
-complementary log-log.  For the gamma--log pair the absorbed blocks even
-retain a closed-form update,
-$\alpha^{(g)}_a = \log\{ m_a^{-1} \sum_{i : g(i)=a} y_i
-\exp(-(\eta_i - \alpha^{(g)}_a))\}$ with $m_a$ the group size, so
-Algorithm~\ref{alg:absorb} applies unchanged.  For links outside this
-class the log likelihood need not be concave in $\btheta$ and the
-guarantee weakens to what smooth ascent methods generically provide:
-monotone likelihood ascent with stationary limit points, without a
-global claim; we state this boundary explicitly since it is where the
-folk confidence in the algorithm stops being a theorem.
-
-The proof (Appendix~\ref{app:global}) proceeds by establishing that
-strict concavity on the quotient plus attainment forces compact
-superlevel sets (Lemma~\ref{lem:levelsets}); monotonicity then confines
-the iterates to a compact set, every limit point is shown to be a
-blockwise maximizer using the uniqueness of the block updates and the
-sufficient-ascent property of the damped Newton step, and for smooth
-concave functions blockwise maximizers are global maximizers.  The
-argument is in the tradition of block-coordinate methods
-\citep{bertsekas1999,tseng2001}; what requires care is (a) the quotient
-structure (the likelihood is not coercive in the natural parametrization,
-only modulo $\mathcal{K}$), (b) the inexact $\bbeta$-block (a damped
-Newton step, not an exact maximizer), and (c) dispensing with any
-compactness or boundedness assumption on the parameter space, which would
-be false here and is where informal appeals to standard results break
-down.
-
-Theorem~\ref{thm:global} has a practical corollary worth stating: since
-every accumulation point of the algorithm is \emph{the} MLE, the familiar
-diagnostics of the linear-projection literature (sensitivity of estimates
-to tightened tolerances, discrepancies across implementations) reflect
-finite-iteration error only, not multiplicity; and step-halving on the
-profile objective---re-solving the inner loop at every trial point, as
-Algorithm~\ref{alg:absorb} specifies---is guaranteed to terminate at each
-outer iteration.
-
-\subsection{Local rate: Friedrichs angles and a bipartite spectral
-gap}\label{sec:rate}
-
-Convergence speed is governed by the geometry of the absorbed subspaces.
-Let $\Omega^\ast = \diag(\omega_i^\ast)$ collect the information weights
-at the optimum, let
-$V_g = \operatorname{span}\{\text{indicator columns of factor } g\}
-\subset \R^N$, and equip $\R^N$ with the inner product
-$\langle u, v \rangle_{\Omega^\ast} = u'\Omega^\ast v$.  Recall that the
-\emph{Friedrichs angle} $\theta_F \in (0, \pi/2]$ between closed
-subspaces $V_1, V_2$ with intersection $V_0$ has cosine
-\[
-c_F = \sup\left\{ \frac{\langle u, v\rangle_{\Omega^\ast}}
-  {\|u\|_{\Omega^\ast} \|v\|_{\Omega^\ast}} :
-  u \in V_1 \cap V_0^{\perp},\;
-  v \in V_2 \cap V_0^{\perp},\; u, v \ne \bzero \right\} < 1 .
-\]
-
-\begin{theorem}[Local linear convergence]\label{thm:rate}
-Let Assumptions~\ref{ass:canonical}--\ref{ass:blocks} hold and let $b$ be
-three times continuously differentiable.  (i) The inner iteration of
-Algorithm~\ref{alg:absorb} at fixed $\bbeta$ (the map
-$T : \balpha \mapsto \balpha^{+}$ of one Gauss--Seidel sweep of exact
-block maximizations) is continuously differentiable in a neighborhood of
-its fixed point $\hat\balpha(\bbeta)$, with Jacobian equal to the block
-Gauss--Seidel iteration matrix of the $\balpha$-block information
-$\bF_{\balpha\balpha}$ at the fixed point; consequently the inner
-iteration converges locally $R$-linearly with rate
-$\rho_{\mathrm{GS}} = \rho\big( (\bD + \mathbf{L})^{-1} \mathbf{L}' \big)
-< 1$ on the quotient, where $\bF_{\balpha\balpha} = \bD + \mathbf{L} +
-\mathbf{L}'$ is the block decomposition into diagonal and strictly
-lower/upper block-triangular parts.
-(ii) For $G = 2$ absorbed factors,
-\[
-\rho_{\mathrm{GS}} = c_F^2 ,
-\]
-the squared Friedrichs cosine between $V_1$ and $V_2$ in the
-$\Omega^\ast$ inner product; the same rate governs the weighted
-alternating-projections demeaning of any working vector, by the theorem
-of \citet{aronszajn1950} and \citet{kayalar1988}.
-(iii) The outer iteration (full cycles of Algorithm~\ref{alg:absorb} with
-exact $\bbeta$-maximization) converges locally $R$-linearly with rate at
-most $\rho\big( \text{block GS operator of } \bF(\btheta^\ast) \text{ in
-the ordering } (\balpha^{(1)}, \dots, \balpha^{(G)}, \bbeta) \big) < 1$.
-\end{theorem}
-
-\begin{corollary}[Bipartite spectral gap]\label{cor:bipartite}
-For $G = 2$, define the weighted biadjacency matrix
-$\bB \in \R^{J_1 \times J_2}$ by
-$B_{ab} = \sum_{i : g_1(i) = a,\, g_2(i) = b} \omega_i^\ast$, and let
-$\bD_1 = \diag(\bB \mathbf{1})$, $\bD_2 = \diag(\bB' \mathbf{1})$.  Then
-\[
-c_F = \sigma_2\!\left( \bD_1^{-1/2} \bB\, \bD_2^{-1/2} \right),
-\]
-the second-largest singular value of the normalized biadjacency
-(transition) kernel.  Equivalently, $1 - c_F^2$ is the spectral gap of
-the random walk on the weighted bipartite graph of the two factors, and
-$c_F < 1$ if and only if that graph is connected---the classical
-identification condition for two-way fixed effects
-\citep{abowd1999,gaure2013}.
-\end{corollary}
-
-Corollary~\ref{cor:bipartite} turns the folklore statement
-``correlated fixed effects make demeaning slow'' into a computable
-quantity: before iterating at all, $\sigma_2$ of a $J_1 \times J_2$
-sparse matrix (a few Lanczos iterations) predicts the per-sweep
-contraction factor exactly.  It also gives sharp intuition for the
-pathologies: nearly disconnected mobility graphs---workers who rarely
-switch firms, patients who rarely switch hospitals---have
-$\sigma_2 \uparrow 1$ and predictably slow demeaning, while balanced
-crossed designs have small $\sigma_2$ and converge in a handful of
-sweeps.  Section~\ref{sec:sim-rate} verifies the prediction to three
-decimals across two orders of magnitude of $1 - c_F^2$.
-
-\subsection{Three or more absorbed factors}\label{sec:multiG}
-
-Administrative designs routinely absorb three or more factors---worker,
-firm, and region--year, say---and for $G \ge 3$ the linear
-alternating-projections literature offers norm bounds but no clean angle
-characterization of the asymptotic rate \citep{deutsch2001,badea2012}.
-The following theorem resolves the practical question for our setting:
-the exact local rate for any $G$ is a computable spectral quantity
-determined by the \emph{pairwise} weighted contingency structure of the
-factors alone, so the bipartite intuition of
-Corollary~\ref{cor:bipartite} does not break down at $G \ge 3$---it
-generalizes, with the pair graph replaced by a $G$-partite sweep
-operator.  For each pair $g \ne h$ define the weighted cross-tabulation
-$\bB_{gh} \in \R^{J_g \times J_h}$,
-$(\bB_{gh})_{ab} = \sum_{i : g(i)=a,\, h(i)=b} \omega_i^\ast$, and the
-level totals $\bD_g = \diag(\bB_{gh}\mathbf{1})$ (independent of $h$).
-
-\begin{theorem}[Exact rate and certificates for $G \ge 2$ factors]
-\label{thm:multiG}
-Let the assumptions of Theorem~\ref{thm:rate} hold and let
-$\mathcal{F} = \bF_{\balpha\balpha}(\btheta^\ast)$ denote the absorbed-block
-information on the level space $\R^{J_1 + \dots + J_G}$.
-\begin{enumerate}
-\item[(i)] \emph{(Pairwise sufficiency.)}  $\mathcal{F}$ has diagonal
-blocks $\bD_g$ and off-diagonal blocks $\bB_{gh}$; hence the local rate
-$\rho_{\mathrm{GS}}$ of Theorem~\ref{thm:rate}(i) is a function of the
-pairwise weighted cross-tabulations only, and can be evaluated without
-access to the microdata once the $G(G-1)/2$ tables are accumulated (one
-$O(N)$ pass).
-\item[(ii)] \emph{(Exact computable rate.)}  Write $\mathcal{F} =
-\mathcal{D} + \mathcal{L} + \mathcal{L}'$ with $\mathcal{D} =
-\diag(\bD_1, \dots, \bD_G)$ and $\mathcal{L}$ strictly block lower
-triangular, and let $\mathbf{M} = -(\mathcal{D} +
-\mathcal{L})^{-1}\mathcal{L}'$ be the sweep operator.  Then the
-eigenspace of $\mathbf{M}$ for the eigenvalue $1$ is exactly
-$\operatorname{null}(\mathcal{F})$ (the flat shift directions), this
-eigenvalue is semisimple, and
-\[
-\rho_{\mathrm{GS}}
- = \max\big\{ |\lambda| : \lambda \in \operatorname{spec}(\mathbf{M}),\;
-   \lambda \ne 1 \big\} < 1
- \iff \operatorname{null}(\mathcal{F}) = \text{flats}
- \iff \text{the multi-way design is identified}.
-\]
-Because the eigenvalue $1$ is semisimple, successive differences of the
-sweep iteration decay at exactly $\rho_{\mathrm{GS}}$, so the rate is
-computable by power iteration on the level space at
-$O\big(\sum_{g<h} \operatorname{nnz}(\bB_{gh})\big)$ per step.
-\item[(iii)] \emph{(A priori certificate.)}  With $c_g$ the Friedrichs
-cosine, in the $\Omega^\ast$ inner product, between $V_g$ and
-$V_{g+1} + \dots + V_G$ for $g = 1, \dots, G-1$,
-\[
-\rho_{\mathrm{GS}}
- \;\le\; \big\| \text{one demeaning sweep} \big\|_{\Omega^\ast}
- \;\le\; \Big( 1 - \prod_{g=1}^{G-1} \big(1 - c_g^2\big) \Big)^{1/2},
-\]
-each $c_g$ again being a level-space quantity (the largest
-non-unit generalized singular value between factor $g$ and the pooled
-design of the later factors); $c_g < 1$ for all $g$ if and only if the
-design is identified.
-\item[(iv)] For $G = 2$, (ii) reduces to $\rho_{\mathrm{GS}} =
-c_F^2 = \sigma_2^2$ of Corollary~\ref{cor:bipartite}, and the bound in
-(iii) to $c_F$.
-\end{enumerate}
-\end{theorem}
-
-Three comments.  First, part (ii) is the operative solution for
-practice: the exact rate is available \emph{before iterating on the
-microdata}, from cross-tabulations that cost one linear pass, by power
-iteration on vectors of length $\sum_g J_g$; the reference
-implementation exposes this as \texttt{gs\_spectral\_rate}, and
-Section~\ref{sec:sim-rate} shows it matching observed contraction
-factors to three decimals for $G = 3$ exactly as for $G = 2$.  Second,
-part (iii) gives the interpretable geometry: each successive factor
-slows the sweep according to its angle to the span of the factors after
-it, the product-of-sines form being the multi-subspace bound of
-\citet{smith1977} and \citet{deutschhundal1997} transported through the
-complement duality; the bound is attained-in-order for $G = 2$ but is
-conservative for $G \ge 3$ (Table~\ref{tab:sim2g3}), which is precisely
-why (ii), not an angle formula, is the right object to compute.  The
-sharp one-sweep \emph{energy-norm} contraction for general $G$ is
-characterized abstractly by the identity of \citet{xu2002} for
-multiplicative subspace-correction methods---the demeaning sweep is
-exactly such a method---but that identity's constant is itself a
-variational quantity no easier than (ii), reinforcing the same
-conclusion.  Third, the identification equivalence in (ii) generalizes
-the connectedness criterion of \citet{abowd1999} and \citet{gaure2013}:
-for $G \ge 3$, pairwise connectedness of all factor pairs is necessary
-but not sufficient for $\rho_{\mathrm{GS}} < 1$ on the quotient; the
-spectral condition is exactly right, and the power iteration returns
-$\rho_{\mathrm{GS}} = 1$ (to tolerance) when identification fails,
-making it a cheap diagnostic as well as a rate predictor.
-
-\subsection{Separation}\label{sec:separation}
-
-Assumption~\ref{ass:mle-exists} fails in the maximum-likelihood sense
-when a hyperplane in covariate space separates events from non-events:
-components of $\hat\btheta$ diverge and the supremum is not attained
-\citep{albert1984,santossilva2010}.  In the absorbed blocks the failure
-mode is transparent---a group with no events has
-$\hat\alpha_a = -\infty$ by \eqref{eq:closed-form}---and
-Algorithm~\ref{alg:absorb} drops such groups a priori, after which
-Assumption~\ref{ass:blocks}(i) holds by construction; this mirrors
-\citet{correia2019}, who treat detection in full generality.  Separation
-induced by the $\bbeta$-block cannot be dropped away and surfaces as
-non-convergence.  Section~\ref{sec:firth} develops the principled remedy
----Firth's adjusted score inside the tilted accumulation---and
-Section~\ref{sec:sim-separation} quantifies its behavior.
-
-% =========================================================================
-\section{Asymptotic theory}\label{sec:asymptotics}
-% =========================================================================
-
-Because Theorem~\ref{thm:tilted} makes the tilted-moment estimator
-\emph{equal} to the MLE, its asymptotic analysis is the analysis of the
-MLE in the relevant regime.  We give results in three regimes,
-in increasing order of dimensionality.  Throughout,
-$\btheta_0$ denotes the truth, expectations are under the model, and the
-triangular-array framework lets all design quantities depend on $N$.
-
-\subsection{Fixed dimension}\label{sec:classical}
-
-\begin{assumption}\label{ass:classical}
-(i) $q = p + k$ is fixed; covariates and offsets are uniformly bounded;
-(ii) $\lambda_{\min}\big(\bF_N(\btheta_0)\big) \to \infty$ and
-$N^{-1}\bF_N(\btheta_0) \to \bF_\infty \succ \bzero$;
-(iii) $\btheta_0$ is interior to the parameter space and $b$ is three
-times continuously differentiable.
-\end{assumption}
-
-\begin{theorem}[Classical asymptotics]\label{thm:classical}
-Under Assumptions~\ref{ass:canonical} and \ref{ass:classical}, with
-probability tending to one the MLE $\hat\btheta_N$ exists, is unique, and
-satisfies
-$\sqrt{N}\, (\hat\btheta_N - \btheta_0) \convd
-\mathcal{N}\big(\bzero,\, \phi\,\bF_\infty^{-1}\big)$; the estimator is
-asymptotically efficient, attaining the Cram\'er--Rao bound.  If the
-conditional mean is correctly specified but the distribution is not, the
-same limit holds with sandwich variance
-$\bF_\infty^{-1} \bm{\Sigma} \bF_\infty^{-1}$, consistently estimated by
-the cell-accumulated sandwich of Section~\ref{sec:vce}.
-\end{theorem}
-
-The proof (Appendix~\ref{app:classical}) is a specialization of
-\citet{fahrmeir1985} plus the pseudo-ML results of
-\citet{gourieroux1984}; we include it because the triangular-array
-statement with offsets and the exact form of the cell-accumulated
-sandwich are used repeatedly later.
-
-\subsection{Diverging dimension: $q_N^3/N \to 0$}\label{sec:diverging}
-
-Register applications place $k_N = \dim(\bdelta)$ in the hundreds or
-thousands---period $\times$ region $\times$ education cells---so the
-fixed-$q$ regime is a poor description.  Let $q_N = p + k_N \to \infty$,
-write $\bF_N = \bF_N(\btheta_0)$, and define the \emph{leverage} of
-observation $i$ as $h_i = \omega_i\, \ba_i' \bF_N^{-1} \ba_i$ (so
-$\sum_i h_i = q_N$).
-
-\begin{assumption}\label{ass:diverging}
-(i) Covariates and offsets are uniformly bounded, and the true linear
-predictors $\{\eta_{0i}\}$ lie in a fixed compact set;
-(ii) \emph{balanced leverage}: $\max_i h_i \le C\, q_N / N$ for a fixed
-constant $C$;
-(iii) $q_N^3 / N \to 0$;
-(iv) $b$ is three times continuously differentiable with $b''$ bounded
-away from $0$ and $\infty$, and $b'''$ bounded, on compact sets.
-\end{assumption}
-
-Condition (ii) is the natural design condition: for a pure cell design
-with balanced cells it holds with $C$ close to $1$, and it fails exactly
-when some cell is drastically undersized relative to the average---the
-same configurations for which practitioners distrust the asymptotics.
-
-\begin{theorem}[Diverging dimension]\label{thm:diverging}
-Under Assumptions~\ref{ass:canonical} and \ref{ass:diverging}, with
-probability tending to one the MLE exists and satisfies
-\[
-\big\| \bF_N^{1/2} (\hat\btheta_N - \btheta_0) \big\|
-  = O_p\big(\sqrt{q_N}\big) ,
-\]
-and for any fixed-dimensional matrix of contrasts $\bC_N' \in
-\R^{d \times q_N}$ with $\bC_N' \bF_N^{-1} \bC_N \to \bm{\Sigma}_C \succ
-\bzero$,
-\[
-\big(\bC_N' \bF_N^{-1} \bC_N\big)^{-1/2} \bC_N'
-  (\hat\btheta_N - \btheta_0) \convd \mathcal{N}(\bzero, \phi\,\bI_d) .
-\]
-The plug-in variance estimator $\bC_N'\bF_N(\hat\btheta_N)^{-1}\bC_N$ is
-consistent in relative terms.
-\end{theorem}
-
-The proof (Appendix~\ref{app:diverging}) is self-contained and short by
-the standards of this literature, because concavity in the canonical
-parametrization substitutes for the empirical-process machinery needed in
-general $M$-estimation \citep{portnoy1988,heshao2000,wang2011}: a
-quadratic-minorization argument in the intrinsic norm delivers the rate,
-and a third-order Taylor control with the balanced-leverage condition
-delivers asymptotic linearity with remainder $o_p(1)$ exactly when
-$q_N^3/N \to 0$.
-
-\subsection{The proportional regime $J/N \to c$: Poisson profile
-likelihood as conditional likelihood}\label{sec:proportional}
-
-The regime that motivates this paper's title question is more extreme:
-one absorbed effect per cell with cells of \emph{bounded} size, so the
-parameter count is a positive fraction of the sample size and
-Theorem~\ref{thm:diverging} cannot apply ($q_N \asymp N$).  This is the
-incidental-parameters regime of \citet{neyman1948}; for smooth nonlinear
-panel models the profile MLE of the common parameter is typically
-inconsistent or biased at order $1/m$ for cell size $m$
-\citep{lancaster2000,fernandezval2016}.  The Poisson family with log
-link is a distinguished exception, for a structural reason worth
-displaying: profiling and conditioning coincide.
-
-Consider cells $j = 1, \dots, J$ of sizes $m_j \le \bar m < \infty$, one
-free effect $\alpha_j$ per cell, individual-level covariates
-$\bx_{ij}$, offsets $o_{ij}$, and
-$y_{ij} \sim \mathrm{Poisson}\big(\exp(\alpha_j + \bgamma'\bx_{ij} +
-o_{ij})\big)$ independently.  Let $D_j = \sum_i y_{ij}$.
-
-\begin{lemma}[Profile equals conditional]\label{lem:conditional}
-For every $\bgamma$ with all $D_j$-positive cells,
-\[
-\ell_p(\bgamma)
- \;=\; \max_{\balpha} \ell(\bgamma, \balpha)
- \;=\; \sum_{j : D_j > 0}
-   \log \Prob\big( y_{j1}, \dots, y_{jm_j} \,\big|\, D_j ; \bgamma \big)
-   \;+\; \text{terms not involving } \bgamma ,
-\]
-where the conditional law of $(y_{j1},\dots,y_{jm_j})$ given $D_j$ is
-multinomial with $D_j$ trials and probabilities
-$\pi_{ij}(\bgamma) = e^{\bgamma'\bx_{ij} + o_{ij}} / \sum_{i'}
-e^{\bgamma'\bx_{i'j} + o_{i'j}}$.  Moreover $\ell_p$ is concave in
-$\bgamma$, and its score and negative Hessian are the Schur complements
-of the tilted moments:
-\[
-\bU_p(\bgamma) = \sum_j \sum_i \big( y_{ij} - D_j \pi_{ij} \big)
-  \bx_{ij},
-\qquad
-\bH_p(\bgamma) = \sum_j D_j\, \Var_{\pi_j}(\bx_j)
- = \bQ - \sum_j \frac{\mathbf{m}_j \mathbf{m}_j'}{M_j^{(0)}} .
-\]
-\end{lemma}
-
-Lemma~\ref{lem:conditional} is a fixed-effects analogue of the classical
-Poisson--multinomial connection; versions of the first display appear in
-the econometric panel literature
-\citep{andersen1970,hausman1984,blundell2002,wooldridge1999}, and the
-Schur-complement identity is what the tilted-moment machinery computes at
-$O(Np^2)$ per iteration (function \texttt{profile\_poisson} in the
-accompanying code).  Its consequence, however, seems not to have been
-developed as an explicit high-dimensional limit theorem with variance
-theory, which we now state.  Conditional on covariates and cell effects,
-cells are independent; define the average conditional information
-$\bar{\bF}_J(\bgamma_0) = J^{-1} \sum_j \E\big[ D_j
-\Var_{\pi_j}(\bx_j) \big]$.
-
-\begin{assumption}\label{ass:proportional}
-(i) Cell sizes satisfy $2 \le m_j \le \bar m$; $J/N \to c \in (0, 1)$;
-(ii) covariates and offsets are uniformly bounded and $\sup_j \alpha_j
-\le C$, so cell means are bounded above (they may be arbitrarily small);
-(iii) $\bar{\bF}_J(\bgamma_0) \to \bar{\bF} \succ \bzero$ as
-$J \to \infty$;
-(iv) $\bgamma_0$ is interior to a fixed compact set $\Gamma$.
-\end{assumption}
-
-\begin{theorem}[Proportional regime]\label{thm:proportional}
-Under Assumption~\ref{ass:proportional}: (i) the profile MLE
-$\hat\bgamma_J$ is consistent; (ii)
-\[
-\sqrt{J}\, \big( \hat\bgamma_J - \bgamma_0 \big)
- \convd \mathcal{N}\big( \bzero,\; \bar{\bF}^{-1} \big) ,
-\]
-with \emph{no asymptotic bias}, despite the number of nuisance
-parameters being a positive fraction of $N$; (iii) both the profile
-information estimator $J\,\bH_p(\hat\bgamma_J)^{-1}$ and the cell-clustered
-sandwich estimator
-$J\,\bH_p^{-1} \big( \tfrac{G}{G-1}\sum_j \bs_j \bs_j' \big) \bH_p^{-1}$,
-with $\bs_j$ the per-cell profile score, are consistent for the
-asymptotic variance in (ii)---the latter remaining consistent under
-within-cell dependence misspecification with correctly specified
-conditional means; and (iv) $\hat\bgamma_J$ attains the semiparametric
-efficiency bound for the model in which the $\alpha_j$ are unrestricted
-nuisance parameters, the conditional score being the efficient score.
-\end{theorem}
-
-Three comments.  First, the mechanism is special to the Poisson--log
-pair: the profile score is \emph{exactly} the conditional score, hence
-exactly unbiased for every $J$ and $m$; the incidental-parameter bias
-that plagues, e.g., the fixed-effects logit (where conditional ML exists
-but differs from profile ML, and profile ML has $O(1/m)$ bias
-\citep{andersen1970,fernandezval2016}) is identically zero here.
-Section~\ref{sec:sim-logit} exhibits the logit failure mode and its
-conditional-likelihood repair quantitatively, and
-Section~\ref{sec:families} discusses how both the conditional
-likelihood \citep{chamberlain1980} and the analytic bias corrections of
-\citet{hahn2004} and \citet{fernandezval2016} slot into the
-cell-collapsed computational structure.  This is
-the likelihood-theoretic content of the folklore that ``Poisson FE is
-immune to the incidental-parameters problem''
-\citep{lancaster2000,wooldridge1999}, sharpened to a $J/N \to c$ limit
-theorem with variance estimation.  Second, the theorem's variance is the
-\emph{conditional} information, which the naive full-information plug-in
-would overstate; the tilted-moment machinery produces the correct Schur
-complement at no extra cost.  Third, event-free cells contribute no
-information and are dropped; this is the profile-likelihood counterpart
-of the separation drop rule and is accounted for in the theory by summing
-over $D_j > 0$.
-
-Section~\ref{sec:sim-highdim} probes the theorem at $c = 1/2$---one
-fixed effect per two observations---where nominal $95\%$ intervals from
-both estimators in (iii) cover at $94$--$96\%$.
-
-% =========================================================================
-\section{Extensions}\label{sec:extensions}
-% =========================================================================
-
-\subsection{Families beyond Poisson}\label{sec:families}
-
-The framework of Section~\ref{sec:tilted} was stated for a generic
-exponential dispersion family; we record the two most used instances.
-
-\emph{Logistic regression.}  With $b(\theta) = \log(1 + e^{\theta})$,
-$\mu_i = (1+e^{-\eta_i})^{-1}$ and $\omega_i = \mu_i(1-\mu_i)$: the tilt
-weights each within-cell observation by its Bernoulli variance, so the
-tilted measure concentrates on observations near the decision boundary.
-All of Theorem~\ref{thm:tilted}, Corollary~\ref{cor:complexity}, and
-Theorems~\ref{thm:global}--\ref{thm:multiG} apply verbatim (the logit
-link is canonical).  Unlike the Poisson case the tilt depends on
-$\bdelta$ through $\omega_i$, so the within-cell moments must be
-re-accumulated each iteration---which the single pass does anyway.  The
-proportional-regime theory of Section~\ref{sec:proportional} does
-\emph{not} transfer: profiling and conditioning differ for the logit,
-and profile ML carries $O(1/m)$ incidental-parameter bias---for matched
-pairs ($m = 2$) the classical limit is $2\gamma_0$
-\citep{andersen1970}---which Section~\ref{sec:sim-logit} reproduces
-numerically.  Two repairs are compatible with the cell-collapsed
-computational structure.  \emph{Conditional ML}
-\citep{chamberlain1980}: conditioning on cell totals gives per-cell
-denominators that are elementary symmetric functions of
-$\{e^{\bgamma'\bx_{ij}}\}_{i \in j}$; these obey the standard
-Newton--Girard recursion and are computable in $O(m_j D_j)$ operations
-per cell---polynomial, not combinatorial---so for the bounded cell sizes
-of the proportional regime the conditional score and information are one
-more $O(N)$ cell pass (the reference implementation includes an exact
-conditional logit along these lines, used in
-Section~\ref{sec:sim-logit}).  \emph{Analytic bias correction}
-\citep{hahn2004,fernandezval2016}: the correction terms are averages of
-within-cell weighted moments of $(\mu_i, \omega_i,
-\partial\omega_i/\partial\eta)$ and leverage-type quantities, all of
-which are cell-decomposable in exactly the sense of
-Theorem~\ref{thm:tilted} and Proposition~\ref{prop:firth}; there is no
-computational barrier to evaluating them inside the tilted pass, and we
-view a packaged implementation as worthwhile software work rather than
-an open methodological problem.
-
-\emph{Gamma regression with log link.}  Here the log link is not
-canonical, Proposition~\ref{prop:noncanonical} applies, and the Fisher
-weights are identically one: the ``tilted'' moments are ordinary
-exposure-weighted cell moments, constant across iterations.  One pass
-suffices for the whole optimization, and only the working residual sums
-$R_j$ are refreshed---a family where the acceleration is at its most
-extreme.
-
-\subsection{Penalized estimation}\label{sec:penalized}
-
-In applications with many continuous covariates (genomics: expression
-levels alongside batch cells), sparsity-inducing penalties on $\bgamma$
-are natural while leaving $\bdelta$ and the absorbed effects
-unpenalized.  Consider
-\[
-\min_{\bgamma, \bdelta}\;
- -\ell(\bgamma, \bdelta) + \lambda_1 \|\bgamma\|_1
- + \tfrac{\lambda_2}{2} \|\bgamma\|_2^2 .
-\]
-
-\begin{proposition}[Penalized tilted-moment proximal Newton]
-\label{prop:penalized}
-At each outer iteration, form the quadratic model of $-\ell$ from the
-tilted moments \eqref{eq:moments} (one $O(Np^2)$ pass), i.e., the exact
-second-order expansion with gradient $-\bU$ and curvature $\bF$.
-(i) Ridge ($\lambda_1 = 0$): the update solves the $(p+k)$-dimensional
-system with $\lambda_2 \bI$ added to the $\bgamma$-block; all conclusions
-of Corollary~\ref{cor:complexity} hold.
-(ii) Lasso/elastic net: one cycle of coordinate descent on the penalized
-quadratic costs $O((p+k)^2)$---independent of $N$---after the pass, so
-the inner solver of \citet{friedman2010} runs entirely on cell-collapsed
-quantities; the outer iteration is a proximal Newton method and converges
-quadratically to the penalized optimum near the solution under the
-conditions of \citet{leesun2014}.
-(iii) The Karush--Kuhn--Tucker conditions, hence the active set and the
-regularization path, are functions of the tilted moments only.
-\end{proposition}
-
-The practical consequence: a lasso path for a Poisson model with
-$N = 10^7$, $J = 10^3$ cells, and $p = 50$ expression covariates costs
-per path point what a dense implementation spends per coordinate.
-
-\subsection{Firth's adjustment inside the tilted pass}\label{sec:firth}
-
-Under separation (Section~\ref{sec:separation}) the MLE does not exist;
-Firth's bias-reducing penalty $\ell^\ast(\btheta) = \ell(\btheta) +
-\tfrac12 \log\det \bF(\btheta)$ \citep{firth1993} guarantees a finite
-maximizer for binomial models \citep{heinze2002} and removes the
-$O(N^{-1})$ bias term in general.  For canonical links the adjusted score
-has the closed form
-$\bU^\ast = \bU + \sum_i h_i\, \frac{b'''(\eta_i)}{2 b''(\eta_i)}\,
-\ba_i$ with leverages $h_i = \omega_i \ba_i' \bF^{-1} \ba_i$
-\citep{firth1993,kosmidis2009}.
-
-\begin{proposition}[Tilted Firth]\label{prop:firth}
-Given the partitioned inverse of $\bF$ (available from the Newton solve),
-the leverages decompose as
-$h_i = \omega_i \{ \bx_i' \bV_{\gamma\gamma} \bx_i
- + 2\, \bx_i' \bc_{j(i)} + d_{j(i)} \}$ with cell-level precomputations
-$\bc_j = \bV_{\gamma\delta} \bw_j$ and
-$d_j = \bw_j' \bV_{\delta\delta} \bw_j$ at $O(J(kp + k^2))$; the adjusted
-score, and hence the entire Firth quasi-scoring iteration
-\citep{kosmidis2009}, is computable at
-$O(N(p^2+p)) + O(J(k^2+kp)) + O((p+k)^3)$ per iteration---the same order
-as Corollary~\ref{cor:complexity}.  For Poisson,
-$b'''/2b'' \equiv 1/2$; for logit it is $\tfrac12(1 - 2\mu_i)$.
-\end{proposition}
-
-Thus the statistically principled response to separation costs
-essentially nothing beyond the unpenalized fit, removing the last reason
-to respond to separation by ad hoc data deletion.
-Section~\ref{sec:sim-separation} quantifies the finite-sample behavior.
-
-A clarification on software behavior is in order.  Both implementations
-detect and drop separated \emph{absorbed} groups automatically before
-estimation (Section~\ref{sec:separation}).  Neither switches to the
-Firth estimator automatically: separation induced by the $\bbeta$-block
-surfaces as flagged non-convergence (the Stata command sets
-\texttt{e(converged)} $= 0$; the reference implementation returns
-\texttt{converged=False}), and the Firth fit must be requested
-explicitly (\texttt{firth=True} in the reference implementation; the
-Stata command currently reports the diagnosis and does not expose a
-Firth option).  The non-switching is deliberate: the Firth estimator is
-a different estimand-defining penalty, not a numerical fallback, and
-silently substituting it would change reported quantities without the
-user's knowledge.  A principled automatic \emph{detector}---running the
-linear-programming certificate of \citet{correia2019} on the cell
-aggregates, at $O(J)$ rather than $O(N)$ scale---is a natural software
-addition that the tilted representation makes cheap.
+The gap between measured and FLOP ratios merits a constructive comment,
+since closing it is an implementation exercise with a known playbook.
+The tilted pass streams $O(Np)$ numbers and performs $O(Np^2)$ flops, so
+for small $p$ its arithmetic intensity is low and the memory bus, not
+the ALU, sets the speed; the dense baseline, by contrast, is a BLAS-3
+Gram update running near peak.  Three standard remedies raise the tilted
+pass toward bandwidth saturation and beyond: (i) \emph{cache locality}:
+storing the microdata sorted by cell converts the binned accumulations
+into contiguous segmented sums, so each cell's partial moments stay in
+registers/L1 and the pass touches each cache line once (this is how the
+Mata implementation in \texttt{stpois} organizes the sweep, following
+\citealp{correia2016}); (ii) \emph{fusion}: the weight evaluation,
+residual, binned sums, and Gram update share one loop, so the data are
+read once per iteration rather than once per moment; and (iii)
+\emph{parallelism}: cells are independent, so the pass shards trivially
+across threads with per-thread partial moments and a $J k$-sized
+reduction, with no atomics on the hot path---the same structure GPU
+segmented-reduction primitives expect.  The single-threaded NumPy
+reference implementation uses none of (i)--(iii) beyond what
+\texttt{bincount} provides, so the reported $12\times$--$117\times$
+should be read as a floor; the FLOP ratio governs how the comparison
+scales with $(p, k)$, and the bandwidth analysis governs the attainable
+constant.
 
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
 
@@ -1292,16 +647,58 @@ identities are what make \emph{inference}, not just point estimation,
 run at cell-collapsed cost; they are implemented in the reference code
 and validated against dense computation in the test suite.
 
+
+
+\subsection{Absorbed fixed-effect factors}\label{sec:absorb-impl}
+
+Applications often add factors whose level counts preclude even
+cell-level treatment---firms, hospitals, municipality--year
+interactions.  The framework composes with the standard absorption
+device: augment the linear predictor with $G$ absorbed factors
+$\alpha^{(g)}_{g(i)}$, concentrate them out by cycling closed-form
+profile updates (for Poisson, $\alpha^{(g)}_a = \log\{\sum_{i: g(i)=a}
+y_i / \sum_{i: g(i)=a} \exp(\eta_i - \alpha^{(g)}_a)\}$, the
+multiplicative update of \citealp{berge2018,correia2020}), and take each
+tilted-moment Newton step on $(\bgamma, \bdelta)$ at the profiled
+effects, with the inner cycle re-solved at every trial point of the line
+search (Algorithm~S1 of the supplement).  Each inner sweep is $O(N)$;
+with a single absorbed factor the inner solve is exact in one sweep.
+
+The theory of this composition is the subject of the online supplement,
+and we summarize what is proved there.  Theorem~S1 establishes
+\emph{global convergence} of the nonlinear cycle to the MLE whenever the
+MLE exists, for canonical and more generally log-concave links---a
+guarantee previously absent from the applied HDFE--GLM literature.
+Theorems~S2--S3 give the \emph{local rate}: for two absorbed factors the
+per-sweep contraction equals $\cos^2$ of the Friedrichs angle between
+the weighted factor subspaces---equivalently the squared second singular
+value of a normalized weighted cross-tabulation---and for $G \ge 3$
+factors the exact rate is the spectral radius of a level-space sweep
+operator determined by the pairwise cross-tabulations alone, computable
+by power iteration before touching the microdata, with an angle-based
+product certificate; observed contraction factors match these
+predictions to three decimals.  Theorems~S4--S6 give asymptotics for the
+estimator (which is the MLE, so classical theory applies at fixed
+dimension) up to the proportional regime of one Poisson fixed effect per
+bounded-size cell, $J/N \to c \in (0,1)$, where profiling coincides with
+conditioning and inference is unbiased with valid cell-clustered
+standard errors.  Separated absorbed groups (no events) are detected and
+dropped a priori, exactly as in \citet{correia2020};
+Section~\ref{sec:app-register} exercises the full composition at scale.
 % =========================================================================
-\section{Simulation studies}\label{sec:simulations}
+\section{Numerical experiments}\label{sec:simulations}
 % =========================================================================
 
-All studies run on a single laptop-class core (Python/NumPy reference
-implementation; scripts \texttt{sim1}--\texttt{sim4} in the code
+All experiments run on a single laptop-class core (Python/NumPy
+reference implementation; scripts \texttt{sim1*} in the code
 supplement) and complete in minutes; every number below regenerates from
-a fixed seed.
+a fixed seed.  The studies validating the supplement's absorption,
+asymptotic, and separation theory (convergence rates for two and three
+factors, the proportional regime, Firth under quasi-separation, the
+logit bias and its conditional repair) are reported in
+Section~S4 of the online supplement.
 
-\subsection{Exactness and cost of tilted-moment Newton}
+\subsection{Exactness and per-iteration cost}
 \label{sec:sim-validation}
 
 Study 1 fits Poisson, logistic, and gamma models with $J \in \{50, 200,
@@ -1349,263 +746,132 @@ BLAS-3 while the tilted pass is memory-bound---the FLOP ratio is the
 right guide to scaling, the measured ratio to wall-clock budgeting.
 Third, the dense baseline at $N = 10^6$, $J = 200$ already needs a
 $1.6$\,GB design matrix where the tilted pass needs the $p$ continuous
-columns only; at the dimensions of Section~\ref{sec:application} the
+columns only; at the dimensions of Section~\ref{sec:app-register} the
 dense fit is not slow but impossible.
 
-The gap between measured and FLOP ratios merits a constructive comment,
-since closing it is an implementation exercise with a known playbook.
-The tilted pass streams $O(Np)$ numbers and performs $O(Np^2)$ flops, so
-for small $p$ its arithmetic intensity is low and the memory bus, not
-the ALU, sets the speed; the dense baseline, by contrast, is a BLAS-3
-Gram update running near peak.  Three standard remedies raise the tilted
-pass toward bandwidth saturation and beyond: (i) \emph{cache locality}:
-storing the microdata sorted by cell converts the binned accumulations
-into contiguous segmented sums, so each cell's partial moments stay in
-registers/L1 and the pass touches each cache line once (this is how the
-Mata implementation in \texttt{stpois} organizes the sweep, following
-\citealp{correia2016}); (ii) \emph{fusion}: the weight evaluation,
-residual, binned sums, and Gram update share one loop, so the data are
-read once per iteration rather than once per moment; and (iii)
-\emph{parallelism}: cells are independent, so the pass shards trivially
-across threads with per-thread partial moments and a $J k$-sized
-reduction, with no atomics on the hot path---the same structure GPU
-segmented-reduction primitives expect.  The single-threaded NumPy
-reference implementation uses none of (i)--(iii) beyond what
-\texttt{bincount} provides, so the reported $12\times$--$117\times$
-should be read as a floor; the FLOP ratio governs how the comparison
-scales with $(p, k)$, and the bandwidth analysis governs the attainable
-constant.
 
-\subsection{Convergence rates of alternating projections}
-\label{sec:sim-rate}
 
-Study 2 validates Theorem~\ref{thm:rate}(ii) and
-Corollary~\ref{cor:bipartite}.  Two factors ($J_1 = 100$, $J_2 = 80$,
-$N = 2\times10^5$) are assigned with a mixing parameter $\rho$: with
-probability $\rho$ a unit's level of factor 2 is deterministically tied
-to its level of factor 1, otherwise uniform---so $\rho$ sweeps the
-weighted bipartite graph from expander-like ($\rho = 0$) to nearly
-disconnected ($\rho = 0.99$).  At Poisson optimum weights we compute the
-predicted per-sweep rate $\sigma_2^2$ from the normalized biadjacency
-kernel, then measure the empirical contraction factor of weighted
-alternating-projections demeaning of a generic covariate.
+\subsection{Comparison with general-purpose and sparse implementations}
+\label{sec:sim-baselines}
+
+Study 1b benchmarks total time to convergence (identical tolerance
+$10^{-9}$, comparable starts) for the same model ($N = 200{,}000$,
+$J = 200$ cells, $p = 2$) against two external baselines: the
+\texttt{statsmodels} GLM implementation---IRLS on the dense design, the
+standard general-purpose route in Python---and a sparse-design IRLS in
+which the design (continuous columns plus cell dummies) is held in CSR
+form and the normal equations are formed and solved sparsely, i.e., the
+natural ``the dummies are sparse, so use a sparse solver'' alternative
+that a careful practitioner would code.
 
 \begin{table}[t]
 \centering
-\caption{Study 2: predicted versus empirical per-sweep contraction of
-weighted alternating projections; sweeps to $\|\Delta\|_\infty <
-10^{-13}$.}
-\label{tab:sim2}
+\caption{Study 1b: total wall-clock time to convergence and maximum
+absolute coefficient deviation from the tilted fit;
+$N = 200{,}000$, $J = 200$, $p = 2$, tolerance $10^{-9}$.}
+\label{tab:sim1b}
 \small
-\begin{tabular}{ccccc}
+\begin{tabular}{lcccccc}
 \toprule
-$\rho$ & Predicted $c_F^2 = \sigma_2^2$ & Empirical rate & Sweeps \\
+& \multicolumn{4}{c}{Time (s)} & \multicolumn{2}{c}{Max.\ deviation} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-7}
+Family & Tilted & Dense & \texttt{statsmodels} & Sparse &
+\texttt{statsmodels} & Sparse \\
 \midrule
-0.00 & 0.0024 & 0.0019 & 7 \\
-0.30 & 0.1897 & 0.1873 & 19 \\
-0.60 & 0.5567 & 0.5547 & 48 \\
-0.80 & 0.7542 & 0.7534 & 96 \\
-0.90 & 0.8896 & 0.8747 & 197 \\
-0.95 & 0.9469 & 0.9469 & 468 \\
-0.99 & 0.9911 & 0.9910 & 2487 \\
+Poisson  & 0.11 & 3.85 & 36.8 & 0.24 & $7\times10^{-15}$ &
+$2\times10^{-15}$ \\
+Logistic & 0.07 & 1.74 & 24.4 & 0.15 & $3\times10^{-15}$ &
+$7\times10^{-15}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:sim2} shows agreement to the third decimal across the
-entire range, including the near-disconnected regime where the rate is
-within $10^{-3}$ of $1$ and the sweep count grows as
-$(1 - c_F^2)^{-1}$.  The spectral prediction is computable before
-iterating (a sparse SVD of the $100 \times 80$ weighted cross-tabulation)
-and could be used to warn users, select orderings, or switch to
-conjugate-gradient acceleration when the gap is small
-\citep{gaure2013,correia2016}.
+Three lessons from Table~\ref{tab:sim1b}.  First, all four
+implementations agree to $10^{-15}$: everything here computes the same
+MLE, and the comparison is purely about arithmetic organization.
+Second, against the implementations practitioners actually reach
+for, the gains are larger than against our own dense baseline: two
+orders of magnitude over \texttt{statsmodels} (whose IRLS re-forms and
+factorizes the dense system each step).  Third---and most informative
+about \emph{where} the structure pays---the sparse-design IRLS is a
+respectable competitor, as it should be: cell dummies are the textbook
+sparse design.  The tilted pass is still $2$--$3\times$ faster here
+because it never materializes a design at all (the sparse route stores
+and re-multiplies $N(p + 1)$ nonzeros and re-forms an
+$O((p+k)^2)$-sparsity Gram matrix each iteration), and the gap widens
+with $k$ and with interactions of categorical variables, which inflate
+the sparse Gram fill-in but leave the tilted cell algebra unchanged.
+The fair summary is not that sparse solvers fail---they do well---but
+that the tilted representation is what a sparse solver would discover if
+it also knew that the dummy block is a partition: the cell structure is
+sparser than sparsity.
 
-The second panel of the study probes Theorem~\ref{thm:multiG} with
-$G = 3$ factors ($J_1, J_2, J_3 = 100, 80, 60$; factor 2 tied to factor
-1 and factor 3 to factor 2, each with probability $\rho$).  For each
-$\rho$ we compute the exact level-space spectral rate of
-Theorem~\ref{thm:multiG}(ii) (function \texttt{gs\_spectral\_rate},
-an eigencomputation on $240$ levels), the Friedrichs product certificate
-of Theorem~\ref{thm:multiG}(iii), and the empirical per-sweep
-contraction of the three-factor demeaning.
+\subsection{Sensitivity: imbalance and rare events}
+\label{sec:sim-sensitivity}
 
-\begin{table}[t]
-\centering
-\caption{Study 2, $G = 3$ absorbed factors: exact spectral rate of
-Theorem~\ref{thm:multiG}(ii) versus empirical per-sweep contraction,
-with the product-of-sines norm certificate of
-Theorem~\ref{thm:multiG}(iii).}
-\label{tab:sim2g3}
-\small
-\begin{tabular}{ccccc}
-\toprule
-$\rho$ & Exact $\rho_{\mathrm{GS}}$ & Empirical rate & Norm bound &
-Sweeps \\
-\midrule
-0.00 & 0.0066 & 0.0064 & 0.0766 & 7 \\
-0.30 & 0.2520 & 0.2524 & 0.6218 & 23 \\
-0.60 & 0.5293 & 0.5317 & 0.8788 & 46 \\
-0.80 & 0.7907 & 0.7890 & 0.9763 & 113 \\
-0.90 & 0.8802 & 0.8837 & 0.9928 & 225 \\
-0.95 & 0.9548 & 0.9552 & 0.9989 & 569 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:sim2g3} confirms the two halves of the theorem exactly
-as designed: the spectral rate matches the observed contraction to the
-third decimal at every $\rho$---the $G = 2$ precision carries over to
-$G = 3$ unchanged---while the a priori norm bound is valid everywhere
-but conservative, overstating the rate substantially in the
-well-conditioned regimes.  The practical protocol this supports: use the
-product certificate (computable from angles factor-by-factor) for a
-quick feasibility screen, and the $O(\sum J_g)$-dimensional spectral
-computation for the exact rate and for the identification diagnostic of
-Theorem~\ref{thm:multiG}(ii).
-
-\subsection{The proportional regime}\label{sec:sim-highdim}
-
-Study 3 probes Theorem~\ref{thm:proportional} at its most extreme:
-Poisson cells of bounded size $m \in \{2, 5, 20\}$, one fixed effect per
-cell, heterogeneous cell effects
-$\alpha_j \sim \mathcal{N}(-1.2, 0.8^2)$, a covariate correlated with the
-cell effects (so that ignoring the effects biases $\hat\bgamma$), $N \in
-\{20{,}000,\ 80{,}000\}$, $1{,}000$ replications.  With $m = 2$ the
-design estimates one nuisance parameter per two observations
-($c = 1/2$).
-
-\begin{table}[t]
-\centering
-\caption{Study 3: profile (concentrated) Poisson estimation with
-$J/N = 1/m$; $1{,}000$ replications; $\gamma_{01} = 0.3$.  ``Cover'' is
-the empirical coverage of nominal $95\%$ intervals from the profile
-information (P) and the cell-clustered sandwich (C).}
-\label{tab:sim3}
-\small
-\begin{tabular}{rrcccccc}
-\toprule
-$N$ & $m$ & $J/N$ & Bias$(\hat\gamma_1)$ & SD$(\hat\gamma_1)$ &
-$\overline{\mathrm{SE}}_P$ & Cover$_P$ & Cover$_C$ \\
-\midrule
-20{,}000 & 2  & 0.50 & $-0.0003$ & 0.0156 & 0.0157 & 0.954 & 0.953 \\
-20{,}000 & 5  & 0.20 & $+0.0009$ & 0.0118 & 0.0119 & 0.953 & 0.951 \\
-20{,}000 & 20 & 0.05 & $+0.0004$ & 0.0107 & 0.0107 & 0.954 & 0.953 \\
-80{,}000 & 2  & 0.50 & $+0.0004$ & 0.0080 & 0.0078 & 0.953 & 0.951 \\
-80{,}000 & 5  & 0.20 & $-0.0001$ & 0.0059 & 0.0060 & 0.955 & 0.954 \\
-80{,}000 & 20 & 0.05 & $-0.0001$ & 0.0054 & 0.0053 & 0.943 & 0.941 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:sim3} confirms every element of the theorem: bias is an
-order of magnitude below the Monte Carlo standard deviation even at
-$c = 1/2$ and shrinks with $N$ at fixed $c$; the profile-information
-standard errors track the true sampling variability to the third decimal;
-and both interval constructions cover at $94$--$96\%$ throughout.  For
-contrast, the same data analyzed with the cell effects ignored (a single
-intercept) biases the coefficient of the effect-correlated covariate by
-$+0.28$ (truth $-0.2$) and yields nominal $95\%$ intervals with
-\emph{zero} empirical coverage in every configuration---the point being
-that the fixed effects are not ignorable here, they are merely free.
-
-\subsection{Separation and the Firth-adjusted tilted pass}
-\label{sec:sim-separation}
-
-Study 4 stresses the boundary where Assumption~\ref{ass:mle-exists}
-fails.  Logistic model, $J = 10$ cells, a continuous covariate, and a
-rare binary exposure ($3\%$ prevalence, true log-odds $1.5$): in small
-samples the exposed events can be quasi-separated with appreciable
-probability.  We compare the MLE (tilted Newton, non-convergence or
-$|\hat\gamma_z| > 10$ flagged as separated) with the Firth-adjusted
-tilted iteration of Proposition~\ref{prop:firth}, $500$ replications per
-$N$.
-
-\begin{table}[t]
-\centering
-\caption{Study 4: quasi-separation frequency and estimator behavior;
-true $\gamma_z = 1.5$.  MLE summaries condition on non-separated
-replications; Firth summaries use all replications.  MAE is median
-absolute error.}
-\label{tab:sim4}
-\small
-\begin{tabular}{rcccccc}
-\toprule
-$N$ & Separated & Firth converged & med$(\hat\gamma_z^{\mathrm{MLE}})$ &
-med$(\hat\gamma_z^{\mathrm{Firth}})$ & MAE$_{\mathrm{MLE}}$ &
-MAE$_{\mathrm{Firth}}$ \\
-\midrule
-300  & 0.394 & 1.000 & 1.704 & 1.586 & 0.587 & 0.498 \\
-600  & 0.042 & 1.000 & 1.581 & 1.556 & 0.446 & 0.400 \\
-1200 & 0.002 & 1.000 & 1.519 & 1.512 & 0.235 & 0.222 \\
-2400 & 0.000 & 1.000 & 1.520 & 1.515 & 0.199 & 0.195 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-At $N = 300$ the MLE fails to exist in $39\%$ of replications; the Firth
-iteration converges in all $500$, with smaller median bias
-\emph{conditional on the MLE existing at all} and uniformly smaller
-median absolute error.  As $N$ grows the two estimators merge, as theory
-requires.  The cost of the adjustment was a factor $\sim\!2$ per
-iteration (the extra unadjusted pass for current-iterate leverages),
-consistent with Proposition~\ref{prop:firth}.
-
-\subsection{The logit failure mode and its conditional repair}
-\label{sec:sim-logit}
-
-Study 5 quantifies the boundary drawn in
-Sections~\ref{sec:proportional} and~\ref{sec:families}: in the
-proportional regime the Poisson profile MLE is exactly unbiased
-(Theorem~\ref{thm:proportional}, Study 3), but the logit profile MLE is
-not.  Cells of size $m \in \{2, 4, 8\}$, one logit fixed effect per
-cell, $\alpha_j \sim \mathcal{N}(0,1)$, a single covariate with
-$\gamma_0 = 1$, $N = 8{,}000$, $500$ replications; uninformative cells
-(all events or all non-events) are dropped, as both estimators require.
-We compare the profile MLE (inner concentration of the cell effects by
-vectorized Newton, outer Schur-complement steps---the logit analogue of
-\texttt{profile\_poisson}) with the exact conditional MLE of
-\citet{chamberlain1980}, computed cellwise as described in
-Section~\ref{sec:families}.
-
-\begin{table}[t]
-\centering
-\caption{Study 5: incidental-parameter bias of the logit profile MLE at
-$J/N = 1/m$ versus the conditional MLE; true $\gamma_0 = 1$; $500$
-replications.  The $m = 2$ profile mean approaches Andersen's classical
-$2\gamma_0$ limit.}
-\label{tab:sim5}
-\small
-\begin{tabular}{rccccc}
-\toprule
-$m$ & $J/N$ & Mean $\hat\gamma^{\mathrm{profile}}$ &
-Bias$^{\mathrm{profile}}$ & Mean $\hat\gamma^{\mathrm{cond}}$ &
-Bias$^{\mathrm{cond}}$ \\
-\midrule
-2 & 0.50  & 1.869 & $+0.869$ & 1.000 & $-0.000$ \\
-4 & 0.25  & 1.403 & $+0.403$ & 0.998 & $-0.002$ \\
-8 & 0.125 & 1.165 & $+0.165$ & 0.998 & $-0.002$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:sim5} displays the textbook pathology at full strength:
-the profile bias is $87\%$ of the parameter at $m = 2$ (approaching the
-$2\gamma_0$ limit of \citealp{andersen1970}) and decays at the
-predicted $O(1/m)$, while the conditional estimator is unbiased to the
-third decimal at every $m$ \emph{at the same cell-collapsed
-computational cost}.  Read together with Study 3, the two tables make
-the paper's asymptotic message concrete: the proportional regime is not
-generically safe (logit) nor generically fatal (Poisson); it is the
-profile--conditional coincidence, an algebraic property of the family,
-that decides---and when the coincidence fails, the conditional
-likelihood is the drop-in repair within the same framework.
-
+Study 1c re-runs the exactness comparison under stress: cell sizes drawn
+from a Zipf($1.6$) law (a few giant cells, a long tail of tiny ones) and
+event rates pushed to $\sim 0.2\%$ (Poisson means $\sim 0.002$; logistic
+prevalence $\sim 0.5\%$), with event-free cells dropped as the MLE
+requires.  Across all eight family $\times$ scenario combinations the
+maximum deviation from dense Newton remains at
+$10^{-15}$--$10^{-14}$, convergence takes at most $12$ iterations
+(rare-event fits need a few more steps, as expected from their flatter
+likelihoods), and the streaming pass time is unchanged---the
+accumulation is a data-independent $O(N)$ sweep, so imbalance shifts
+work between cells without changing its total.  Exactness is an
+algebraic identity and is expected to survive stress; the value of the
+study is confirming that the \emph{implementation} (binned accumulation,
+line search, drop rules) inherits the robustness
+(script \texttt{sim1b\_baselines.py}).
 % =========================================================================
-\section{Register-scale case study}\label{sec:application}
+\section{Applications}\label{sec:applications}
 % =========================================================================
 
-We close with a case study at the scale that motivates the framework:
+\subsection{On-time performance of NYC flights}\label{sec:app-flights}
+
+The first application is to public data, chosen so that every number can
+be reproduced from a fresh download: the \texttt{nycflights13} data set
+\citep{wickham2018}---all $336{,}776$ flights departing New York City's
+three airports in 2013, from the U.S.\ Bureau of Transportation
+Statistics.  We model the probability of a late arrival (arrival delay
+$\ge 15$ minutes, the FAA on-time criterion; $24.5\%$ of the $327{,}346$
+flights with an observed delay) by logistic regression with a cell
+structure of carrier $\times$ origin $\times$ destination $\times$
+month---$J = 3{,}863$ observed combinations, entering through a
+main-effects cell-level design with $k = 131$ parameters ($16$ carriers,
+$3$ origins, $103$ destinations, $12$ months)---and $p = 2$ continuous
+covariates: scheduled departure time (in hours, centered) and log
+distance (standardized).  One destination (LEX, a single on-time
+flight) is quasi-separated---its dummy's MLE is $-\infty$---and is
+dropped by the level-wise separation rule, after which the MLE exists.
+
+The tilted logistic fit converges in $7$ Newton iterations,
+$1.7$ seconds including robust standard errors.  The diurnal effect is
+the substantive headline: the odds of a late arrival multiply by
+$1.11$ per hour of scheduled departure time (robust SE on the log scale
+$0.001$)---delays cascade through the day, a finding familiar from the
+air-transportation literature, here estimated jointly with a full
+operational cell structure.  Log distance illustrates the boundary case
+flagged in Section~\ref{sec:tilted-main}: distance is constant within
+origin--destination routes, hence within cells, so after destination
+main effects it is identified only through cross-route contrasts and is
+correspondingly imprecise ($+0.65$, robust SE $0.28$)---the estimator
+handles cell-constant continuous covariates correctly and the standard
+error says exactly how little such a covariate adds.
+
+As external validation, the identical model was fitted with
+\texttt{statsmodels} GLM on the dense $327{,}345 \times 133$ design
+($0.35$\,GB): maximum absolute coefficient deviation
+$2.3 \times 10^{-13}$, at $16.6$ seconds versus $1.7$---the same
+estimator, ten times cheaper, with no design matrix in memory
+(script \texttt{app\_flights.py}; the data file is fetched from the
+public repository cited in the script).
+
+\subsection{A register-scale stress test}\label{sec:app-register}
+
+The second application is a stress test at the scale that motivates the
+framework:
 spatial epidemiology on an emulated population register.  Because
 genuine Nordic register microdata cannot leave certified secure
 environments, the study uses a fully reproducible synthetic register,
@@ -1616,13 +882,13 @@ generator is 40 lines of the supplement and every number below
 regenerates end to end in under a minute.  The scientific template is a
 standard one---does a within-municipality environmental exposure predict
 mortality after fine demographic and spatial-temporal control?---and the
-computational shape is exactly that of
-Sections~\ref{sec:tilted}--\ref{sec:hdfe}.
+computational shape combines every element of
+Sections~\ref{sec:tilted}--\ref{sec:algorithms}.
 
 The data comprise $N = 5{,}000{,}000$ person-year episodes ($35{,}526$
 deaths; crude rate $9.5$ per $1{,}000$ person-years) with:
 municipality $\times$ year fixed effects ($500 \times 20 = 10{,}000$
-groups) absorbed by Algorithm~\ref{alg:absorb}; a cell-level design of
+groups) absorbed by the profile Gauss--Seidel scheme of Section~\ref{sec:absorb-impl} (Algorithm~S1); a cell-level design of
 education (4) $\times$ sex (2) $\times$ age band (12), $J = 96$ cells,
 $k = 16$ parameters; and $p = 2$ continuous covariates---standardized log
 income and a standardized pollution-exposure index correlated with the
@@ -1630,7 +896,7 @@ municipality effects (making the fixed effects non-ignorable for it).
 Standard errors are clustered on the $500$ municipalities.
 
 The fit: $322$ zero-event municipality--year groups ($159{,}464$
-episodes) are dropped by the separation rule; the remaining model---%
+episodes) are dropped by the separation rule of Section~\ref{sec:absorb-impl}; the remaining model---%
 $9{,}678$ absorbed effects, $16$ cell-level and $2$ individual-level
 coefficients---converges in $8$ tilted Newton iterations,
 $11.2$ seconds end to end on one core.  A dense dummy-variable design for
@@ -1655,78 +921,55 @@ environment, where wall-clock and memory budgets are tight and software
 dependencies restricted, this difference is what determines whether such
 models get fitted at all.
 
+
 % =========================================================================
 \section{Discussion}\label{sec:discussion}
 % =========================================================================
 
-This paper reframed two computational folk devices---cell collapse and
-fixed-effect absorption---as a single exact framework and supplied the
-theory that practice has been running ahead of: an algebraic
-identity (Theorem~\ref{thm:tilted}) that makes Newton on the full
-likelihood a cell-level computation; global convergence of the nonlinear
-Gauss--Seidel absorption cycle for canonical and, more generally,
-log-concave links (Theorem~\ref{thm:global}); sharp local rates---the
-bipartite spectral gap for two factors
-(Theorem~\ref{thm:rate}, Corollary~\ref{cor:bipartite}) and, for any
-number of factors, an exact spectral characterization computable from
-pairwise cross-tabulations before iterating, with an angle-based
-certificate (Theorem~\ref{thm:multiG}); and asymptotics that cover the
-dimensionalities register data actually present, including the
-proportional regime $J/N \to c$ where the Poisson profile likelihood's
-coincidence with a conditional likelihood delivers unbiased,
-efficiently-normal, cluster-robust inference
-(Theorem~\ref{thm:proportional}), and where the logit's failure of that
-coincidence is repaired by the conditional likelihood at the same
-cell-collapsed cost (Section~\ref{sec:sim-logit}).
+The paper's message is one computational idea, developed to the point of
+routine use: when a GLM mixes a rich categorical structure with a few
+continuous covariates, the exact score and information---hence exact
+Newton, exact profile Hessians, and exact robust and clustered
+covariance matrices---are functions of three tilted within-cell moments
+that one streaming pass produces.  Ordinary collapse fails because the
+likelihood surface needs the whole within-cell distribution
+(Proposition~\ref{prop:sufficiency}); estimation succeeds because each
+iteration needs only the current tilt of that distribution
+(Theorem~\ref{thm:tilted}).  The experiments quantify what this buys
+over the implementations in actual use, including the strongest fair
+competitor (a sparse-design IRLS), and the applications show the method
+doing routine work on public and register-scale data.
 
-Several limitations delineate future work.  First, the
-proportional-regime \emph{theory} is Poisson-specific; for the logit we
-have shown that the exact conditional likelihood is computable within
-the same cell-collapsed structure (Sections~\ref{sec:families}
-and~\ref{sec:sim-logit}) and that the analytic bias corrections of
-\citet{hahn2004} and \citet{fernandezval2016} are cell-decomposable,
-but a limit theorem with variance theory for the conditional logit at
-$J/N \to c$, parallel to Theorem~\ref{thm:proportional}, remains to be
-written down (the classical fixed-$m$ arguments of
-\citealp{andersen1970} should extend along the lines of
-Appendix~\ref{app:classical}).  Second, Theorem~\ref{thm:multiG}
-settles the $G \ge 3$ rate question in computable form---the exact rate
-is the spectral radius of a level-space sweep operator determined by
-pairwise cross-tabulations, with the product-of-sines certificate as an
-a priori bound---but a closed-form expression in terms of a single
-generalized angle is not available and is likely not to exist, matching
-the state of the multi-subspace alternating-projections literature
-\citep{badea2012}; sharpening the certificate toward the exact rate is
-an interesting problem.  Third, our separation handling is exact for the
-absorbed blocks and delegated to Firth for the rest; a full polyhedral
-detection in the sense of \citet{correia2019}, run on cell aggregates,
-would be a useful complement.  Fourth, the asymptotic regimes here treat
-cells and effects as fixed configurations; random-effects and
-crossed-random-effects limits under $J/N \to c$ raise different questions
-\citep{jochmans2019}.
+The device composes with, rather than competes against, the
+fixed-effect absorption stack: absorbed factors handle dummy structure
+too large even for cells, and the tilted pass handles everything else.
+The companion theory for that composition---global convergence of the
+nonlinear alternating-projections cycle for log-concave links, exact
+local rates for any number of absorbed factors from pairwise weighted
+cross-tabulations, asymptotics up to the proportional regime
+$J/N \to c$ with its Poisson unbiasedness and its logit failure-and-repair,
+and Firth and penalized variants computed inside the same pass---is
+developed, proved, and validated in the online supplement; we kept it
+out of the main text so that the computational contribution stands on
+its own terms.
 
 \paragraph{Software.}  The algorithms are implemented twice.  The Stata
-command \texttt{stpois} (with companion article) implements the Poisson
-event-history case in production form---\texttt{stset} integration,
-factor-variable parsing, weights, survey support---using the fast path
-(Theorem~\ref{thm:tilted}), the absorption path
-(Algorithm~\ref{alg:absorb}), and their combination.  A self-contained
-reference implementation in Python/NumPy (roughly 600 lines,
-\texttt{tilted\_glm.py}), which generated every number in
-Sections~\ref{sec:simulations}--\ref{sec:application}, accompanies this
-article; it implements all three families, absorption, Firth, and the
-robust/cluster variance estimators, and is organized to make the
-correspondence between code and theorems line-by-line auditable.  Both
-are available at \url{https://github.com/andreasljungstrm/stpois}.
+command \texttt{stpois} implements the Poisson event-history case in
+production form (its software article documents the interface); a
+self-contained Python/NumPy reference implementation
+(\texttt{tilted\_glm.py}, roughly $800$ lines), which generated every
+number in this paper and the supplement, accompanies the manuscript and
+is organized to make the correspondence between code and results
+line-by-line auditable.  Both are available at
+\url{https://github.com/andreasljungstrm/stpois}.
 
 \paragraph{Acknowledgments.}  The author thanks colleagues at SOFI for
-discussions of register-based event-history workflows that motivated this
-work.
+discussions of register-based event-history workflows that motivated
+this work.
 
 \appendix
 \renewcommand{\thesection}{\Alph{section}}
 
-% =========================================================================
 \section{Proofs for Section~\ref{sec:tilted}}\label{app:tilted}
 % =========================================================================
 
@@ -1827,544 +1070,6 @@ $R_j = \sum_{i\in j}(y_i - \mu_i)/\mu_i$ requires re-evaluation, an
 $O(Np)$ pass. \qed
 
 % =========================================================================
-\section{Proofs for Section~\ref{sec:hdfe}}\label{app:global}
-% =========================================================================
-
-Throughout this appendix write $D = q + \sum_g J_g$ for the total
-parameter dimension, $\ba_i \in \R^{D}$ for the stacked design vector of
-observation $i$ (individual-level, cell-level, and absorbed indicator
-parts), $\mathcal{K} = \{ \bu : \ba_i'\bu = 0 \ \forall i \}$ for the
-null space, and $E = \mathcal{K}^{\perp} \cong \R^{D}/\mathcal{K}$.  By
-Assumption~\ref{ass:canonical}, $\ell(\btheta) = \phi^{-1}\sum_i \{y_i
-\ba_i'\btheta - b(\ba_i'\btheta + o_i)\}$ (absorbing offsets into $b$'s
-argument) is concave on $\R^D$, constant on cosets of $\mathcal{K}$, and
-its restriction $\bar\ell$ to $E$ is \emph{strictly} concave: for
-$\bu \in E \setminus \{\bzero\}$, some $\ba_i'\bu \ne 0$ and
-$-\bu'\nabla^2\ell\,\bu = \phi^{-1}\sum_i b''(\cdot)(\ba_i'\bu)^2 > 0$.
-
-\begin{lemma}[Compact superlevel sets]\label{lem:levelsets}
-Let $f : \R^d \to \R$ be strictly concave, continuous, and attain its
-maximum at $x^\ast$.  Then every superlevel set
-$\{x : f(x) \ge a\}$, $a \le f(x^\ast)$, is compact.
-\end{lemma}
-
-\begin{proof}
-Superlevel sets of concave functions are closed and convex.  Suppose
-$S_a$ is unbounded for some $a$; then $S_a$ contains a ray
-$\{x^\ast + t\bv : t \ge 0\}$ for some unit vector $\bv$ (a closed
-unbounded convex set containing $x^\ast$ contains a ray from $x^\ast$;
-see \citealp[Thm.~8.4]{rockafellar1970}).  Let
-$\varphi(t) = f(x^\ast + t\bv)$: strictly concave on $[0, \infty)$,
-$\varphi(t) \ge a$ for all $t$, maximized at $t = 0$.  If
-$\varphi'(t_0^+) < 0$ for some $t_0$, concavity gives $\varphi(t) \le
-\varphi(t_0) + \varphi'(t_0^+)(t - t_0) \to -\infty$, contradicting
-$\varphi \ge a$; hence the (strictly decreasing, by strict concavity)
-right derivative satisfies $\varphi'(t^+) \ge 0$ for all $t > 0$.  But
-$\varphi'(0^+) \le 0$ at the maximum, and strict decrease then forces
-$\varphi'(t^+) < 0$ for $t > 0$---a contradiction.
-\end{proof}
-
-\subsection{Proof of Theorem~\ref{thm:global}}
-
-All statements are on $E$; representatives are normalized after each
-sweep (any fixed measurable normalization, e.g., recentering each
-absorbed factor and compensating in the intercept, changes nothing in
-$\ell$).
-
-\emph{Monotonicity and confinement.}  Each $\balpha^{(g)}$-update is an
-exact maximization over its block (the block objective separates over
-the levels of factor $g$; each level's scalar problem $\alpha \mapsto
-c_1 \alpha - \sum_{i} b(\alpha + \text{rest}_i)$ is strictly concave
-with derivative $\to \pm\infty$ prevented only if the level has an
-interior event, which Assumption~\ref{ass:blocks}(i) guarantees; hence a
-unique finite maximizer exists).  The $\bbeta$-update is accepted only
-under the Armijo test, so $\ell(\btheta_{t+1}) \ge \ell(\btheta_t)$, and
-the sequence $\ell(\btheta_t)$ converges to some $L^\ast \le
-\ell(\btheta^\ast)$ (Assumption~\ref{ass:mle-exists}).  By
-Lemma~\ref{lem:levelsets} applied to $\bar\ell$ on $E$, the normalized
-iterates remain in the compact set $\bar S = \{\bar\ell \ge
-\ell(\btheta_0)\}$.
-
-\emph{Limit points are stationary.}  Let $\bar\btheta$ be a limit point
-of the normalized iterates, along $t_r$.  The per-cycle increment
-$\ell(\btheta_{t+1}) - \ell(\btheta_t) \to 0$, and increments are sums
-of nonnegative per-block increments, so each block's increment vanishes.
-Fix a block $g$ and let $T_g$ denote the map that exactly maximizes over
-block $g$ holding the rest fixed; $T_g$ is continuous on $\bar S$ (the
-unique maximizer of a strictly concave, jointly continuous objective
-depends continuously on the fixed coordinates; Berge's maximum theorem
-plus uniqueness).  If block $g$ were not optimal at $\bar\btheta$, then
-$\varepsilon := \ell(T_g\bar\btheta) - \ell(\bar\btheta) > 0$; by
-continuity of $T_g$ and $\ell$, the block-$g$ increment at
-$\btheta_{t_r}$ (with the preceding blocks of the cycle already updated,
-which also converge along the subsequence by the same argument applied
-inductively in the cycle order) exceeds $\varepsilon/2$ for large $r$
----contradiction.  Hence every absorbed block of $\bar\btheta$ is
-blockwise optimal, i.e., $\nabla_{\balpha}\ell(\bar\btheta) = \bzero$.
-For the $\bbeta$-block, suppose $\bU_{\bbeta}(\bar\btheta) \ne \bzero$.
-On the compact set $\bar S$, the information $\bF$ is continuous and,
-by Assumption~\ref{ass:blocks}(ii), $\bF_{\bbeta\bbeta}$ is nonsingular
-with eigenvalues in a fixed interval $[\underline\lambda,
-\bar\lambda]$, $\underline\lambda>0$; the Newton direction $\mathbf{d} =
-\bF_{\bbeta\bbeta}^{-1}\bU_{\bbeta}$ then satisfies $\bU_{\bbeta}'\mathbf{d}
-\ge \|\bU_{\bbeta}\|^2/\bar\lambda$, and the standard backtracking bound
-guarantees an accepted step length $\lambda_t$ bounded below and an
-increment $\ge \sigma \lambda_t \bU_{\bbeta}'\mathbf{d}$ bounded away from
-zero in a neighborhood of $\bar\btheta$ \citep[Prop.~1.2.1 and
-Sec.~2.7]{bertsekas1999}---again contradicting vanishing increments.
-Hence $\nabla\ell(\bar\btheta) = \bzero$.
-
-\emph{Conclusion.}  For a concave differentiable function, a stationary
-point is a global maximizer, so $\bar\btheta = \btheta^\ast$ modulo
-$\mathcal{K}$ by strict concavity on $E$; since every limit point of the
-normalized iterates in the compact set $\bar S$ equals the normalized
-$\btheta^\ast$, the whole sequence converges to it, and
-$L^\ast = \ell(\btheta^\ast)$, proving (i)--(ii).  Part (iii) follows
-because the argument used only: exactness/uniqueness of the absorbed
-block maximizations, sufficient ascent of the $\bbeta$-step, and
-vanishing per-block increments---all invariant to replacing the
-$\bbeta$-step by exact maximization and to essentially-cyclic orderings
-(every block updated at least once every $B$ iterations).
-
-For part (iv), inspect where Assumption~\ref{ass:canonical} entered:
-(a) concavity of $\ell$ on $\R^D$ and strict concavity on $E$ used only
-that each per-observation contribution $\eta \mapsto \ell_i(\eta)$ is
-(strictly) concave, which is the log-concave-link hypothesis; (b) the
-absorbed block subproblems are separable sums of strictly concave
-scalar functions, so unique finite maximizers exist under the analogue
-of Assumption~\ref{ass:blocks}(i) (for the gamma--log family every
-group maximizer is finite whenever the group is nonempty, since
-$y_i > 0$ a.s.); and (c) the sufficient-ascent argument for the
-$\bbeta$-step used only that the step direction is
-$\mathbf{d} = \mathbf{P}^{-1}\bU_{\bbeta}$ for a symmetric
-preconditioner $\mathbf{P}$ with eigenvalues in $[\underline\lambda,
-\bar\lambda]$, giving $\bU_{\bbeta}'\mathbf{d} \ge
-\|\bU_{\bbeta}\|^2/\bar\lambda$---satisfied by the expected
-information of Fisher scoring under
-Assumption~\ref{ass:blocks}(ii). \qed
-
-\subsection{Proof of Theorem~\ref{thm:rate}}
-
-\emph{(i)}  Write the inner objective as $f(\balpha) =
-\ell(\bbeta, \balpha)$ with fixed $\bbeta$, and let $\hat\balpha$ be its
-maximizer (unique after normalization).  The block-$g$ exact update
-solves $\nabla_g f(\balpha^{(<g),+}, \alpha^{(g)},
-\balpha^{(>g)}) = \bzero$; the block Hessian $\bF_{gg}$ is diagonal with
-entries $\sum_{i \in \text{level}} b''(\eta_i) > 0$, so by the implicit
-function theorem (using $b \in C^3$) the update map is $C^1$ near the
-fixed point with partial derivatives $-\bF_{gg}^{-1}\bF_{g, h}$ with
-respect to block $h \neq g$.  Composing the $G$ block updates in cycle
-order gives $DT(\hat\balpha) = -(\bD + \mathbf{L})^{-1}\mathbf{L}'$,
-where $\bF_{\balpha\balpha} = \bD + \mathbf{L} + \mathbf{L}'$ is the
-block diagonal/lower/upper decomposition---the classical Gauss--Seidel
-error operator---restricted to the quotient.  Since
-$\bF_{\balpha\balpha}$ is symmetric positive definite on the quotient,
-$\rho_{\mathrm{GS}} = \rho(DT) < 1$ \citep[Sec.~11.2]{golub2013}, and
-Ostrowski's theorem \citep[Sec.~10.1]{ortega1970} yields local $R$-linear
-convergence at rate $\rho_{\mathrm{GS}}$.
-
-\emph{(ii)}  Let $G = 2$ with indicator matrices $\mathbf{A}_1 \in
-\R^{N\times J_1}$, $\mathbf{A}_2 \in \R^{N \times J_2}$ and $\bF_{gh} =
-\mathbf{A}_g'\Omega^\ast\mathbf{A}_h$.  The eigenvalues of the two-block
-Gauss--Seidel operator are $\{0\}$ together with the eigenvalues of
-$\bF_{22}^{-1}\bF_{21}\bF_{11}^{-1}\bF_{12}$ (eliminate the first block).
-In the $\Omega^\ast$ inner product this matrix represents
-$\bP_2 \bP_1|_{V_2}$, the compression to $V_2$ of the product of the
-orthogonal projections onto $V_1$ and $V_2$; its spectrum on the
-complement of $V_1 \cap V_2$ is $\{\cos^2\theta_i\}$ with $\theta_i$ the
-principal angles between $V_1 \ominus (V_1\cap V_2)$ and $V_2 \ominus
-(V_1 \cap V_2)$, whose supremum-cosine is $c_F$
-\citep[Ch.~9]{deutsch2001}.  On the quotient (which removes
-$V_1 \cap V_2$, the flat directions), $\rho = c_F^2$.  The identical
-rate for the demeaning residuals is the theorem of
-\citet{aronszajn1950} and \citet{kayalar1988}:
-$\|(\bP_{V_2^\perp}\bP_{V_1^\perp})^n - \bP_{(V_1+V_2)^\perp}
-\|_{\Omega^\ast} = c_F^{2n-1}$, using that the Friedrichs angle is
-invariant under orthogonal complementation
-\citep[Ch.~9]{deutsch2001}.
-
-\emph{(iii)}  Append the $\bbeta$-block: the cycle map with exact
-maximizations is again $C^1$ by the implicit function theorem (the
-$\bbeta$-block Hessian is nonsingular by
-Assumption~\ref{ass:blocks}(ii)), its Jacobian is the block Gauss--Seidel
-operator of the full $\bF(\btheta^\ast)$ in the stated ordering, and the
-SPD argument of (i) applies on the quotient. \qed
-
-\subsection{Proof of Corollary~\ref{cor:bipartite}}
-
-Represent $u \in V_1$, $v \in V_2$ by their level vectors, $u =
-\mathbf{A}_1\tilde u$, $v = \mathbf{A}_2 \tilde v$.  Then
-$\langle u, v\rangle_{\Omega^\ast} = \tilde u' \bB \tilde v$,
-$\|u\|^2_{\Omega^\ast} = \tilde u' \bD_1 \tilde u$,
-$\|v\|^2_{\Omega^\ast} = \tilde v' \bD_2 \tilde v$.  Substituting
-$\mathbf{r} = \bD_1^{1/2}\tilde u$, $\mathbf{s} = \bD_2^{1/2}\tilde v$
-turns the Friedrichs supremum into the second singular value of
-$\mathbf{T} = \bD_1^{-1/2}\bB\bD_2^{-1/2}$: the top singular pair
-$(\bD_1^{1/2}\mathbf{1}, \bD_2^{1/2}\mathbf{1})$, with $\sigma_1 = 1$,
-spans exactly the image of the intersection $V_1 \cap V_2 \supseteq
-\text{constants}$, which the Friedrichs angle excludes.  $\mathbf{T}$ is
-the transition kernel of the two-step random walk on the weighted
-bipartite graph with biadjacency $\bB$; by Perron--Frobenius, the
-multiplicity of $\sigma = 1$ equals the number of connected components,
-so $\sigma_2 < 1$ iff the graph is connected, which is also exactly the
-condition $V_1 \cap V_2 = \operatorname{span}\{\mathbf{1}\}$
-\citep{abowd1999,gaure2013}. \qed
-
-\subsection{Proof of Theorem~\ref{thm:multiG}}
-
-\emph{(i)}  Within one factor the indicator columns have disjoint
-supports, so $\mathbf{A}_g'\Omega^\ast\mathbf{A}_g = \bD_g$ (diagonal);
-for $g \ne h$, $\mathbf{A}_g'\Omega^\ast\mathbf{A}_h = \bB_{gh}$ by
-definition.  Theorem~\ref{thm:rate}(i) identifies the local rate with
-$\rho$ of the block Gauss--Seidel operator of $\mathcal{F}$, which is a
-function of these blocks only.
-
-\emph{(ii)}  \emph{Eigenspace of $1$.}  $\mathbf{M}v = v \iff
--\mathcal{L}'v = (\mathcal{D} + \mathcal{L})v \iff \mathcal{F}v =
-\bzero$, so the fixed points of the sweep are exactly the null vectors
-of $\mathcal{F}$; for connected designs these are the $G - 1$
-between-factor shift directions, and in general the flats of the
-identification quotient.  \emph{Semisimplicity.}  Suppose the eigenvalue
-$1$ had a nontrivial Jordan block: then there is $v$ with
-$(\mathbf{M} - \bI)v = f$ for some $f \in
-\operatorname{null}(\mathcal{F}) \setminus \{\bzero\}$.  Since
-$\mathbf{M} - \bI = -(\mathcal{D} + \mathcal{L})^{-1}\mathcal{F}$, this
-reads $\mathcal{F}v = -(\mathcal{D} + \mathcal{L})f$.  Multiply on the
-left by $f'$: the left side is $f'\mathcal{F}v = (\mathcal{F}f)'v = 0$.
-For the right side, $\mathcal{F}f = \bzero$ gives
-$(\mathcal{D} + \mathcal{L})f = -\mathcal{L}'f$, hence
-$f'\mathcal{D}f + 2f'\mathcal{L}f = f'\mathcal{F}f = 0$, i.e.\
-$f'\mathcal{L}f = -\tfrac12 f'\mathcal{D}f$, and therefore
-$f'(\mathcal{D} + \mathcal{L})f = \tfrac12 f'\mathcal{D}f > 0$ because
-$\mathcal{D}$ is positive definite (every level carries positive
-weight) and $f \ne \bzero$.  The two sides disagree---contradiction; so
-the eigenvalue $1$ is semisimple and $\R^{\sum J_g} =
-\operatorname{null}(\mathcal{F}) \oplus W$ with $W$ an
-$\mathbf{M}$-invariant complement on which
-$\rho(\mathbf{M}|_W) = \rho_{\mathrm{GS}} < 1$ by
-Theorem~\ref{thm:rate}(i) (this is the semiconvergence of Gauss--Seidel
-for consistent singular symmetric positive semidefinite systems; cf.\
-\citealp{keller1965,berman1994}).  \emph{Differences.}  Decomposing an
-arbitrary start $e_0 = f_0 + w_0$, the iterates are $e_t = f_0 +
-\mathbf{M}^t w_0$, so $e_{t+1} - e_t = (\mathbf{M} -
-\bI)\mathbf{M}^t w_0$, whose norm ratios converge to
-$\rho(\mathbf{M}|_W)$ for generic $w_0$: the fixed-point component drops
-out automatically, which is what makes plain power iteration on
-differences a valid estimator of $\rho_{\mathrm{GS}}$.
-\emph{Identification.}  $\rho_{\mathrm{GS}} < 1$ on the quotient iff
-$\mathcal{F}$ is positive definite there (Gauss--Seidel on a symmetric
-system converges iff the matrix is positive definite on the relevant
-space; \citealp[Sec.~11.2]{golub2013}), which is the definition of the
-multi-way design being identified up to the flats.  \emph{Cost.}  One
-application of $\mathbf{M}$ is one block forward-substitution: for each
-$g$ in order, a diagonal solve after accumulating
-$\sum_{h \ne g} \bB_{gh} v_h$, i.e., $O\big(\sum_{g<h}
-\operatorname{nnz}(\bB_{gh})\big)$ operations.
-
-\emph{(iii)}  Work in the $\Omega^\ast$ inner product on $\R^N$ and let
-$\varepsilon_t \in V_1 + \dots + V_G$ be the error of the fitted
-fixed-effect vector after sweep $t$.  Updating block $g$ to its exact
-blockwise maximizer replaces $\varepsilon$ by $(\bI -
-\bP_g)\varepsilon$, where $\bP_g$ is the $\Omega^\ast$-orthogonal
-projection onto $V_g$: the block update minimizes the quadratic (IRLS)
-energy over corrections in $V_g$, and the minimizer of
-$\|\varepsilon + \delta\|_{\Omega^\ast}$ over $\delta \in V_g$ is
-$\delta = -\bP_g\varepsilon$.  One sweep therefore applies
-$\mathbf{E} = (\bI - \bP_G)\cdots(\bI - \bP_1)$---the multiplicative
-subspace-correction (equivalently, cyclic alternating projections onto
-the complements $M_g = V_g^{\perp}$)---and the level-space operator
-$\mathbf{M}$ of (ii) is the matrix of
-$\mathbf{E}|_{V_1 + \dots + V_G}$ in the (redundant) level
-parametrization, so the two have the same nonzero spectrum and
-$\rho_{\mathrm{GS}} = \rho(\mathbf{E}|_{(\cap_g M_g)^{\perp} \cap (V_1 +
-\dots + V_G)}) \le \|\mathbf{E} - \bP_{\cap_g M_g}\|_{\Omega^\ast}$.
-The product bound of \citet{smith1977} (see also
-\citealp{deutschhundal1997,badea2012}) gives
-$\|\mathbf{E} - \bP_{\cap M_g}\|_{\Omega^\ast} \le \big(1 -
-\prod_{g=1}^{G-1}(1 - \tilde c_g^{\,2})\big)^{1/2}$ with $\tilde c_g =
-c\big(M_g,\, M_{g+1} \cap \dots \cap M_G\big)$; by the complement
-duality of the Friedrichs angle, $c(A, B) = c(A^{\perp}, B^{\perp})$
-\citep[Ch.~9]{deutsch2001}, and $M_{g+1} \cap \dots \cap M_G =
-(V_{g+1} + \dots + V_G)^{\perp}$, so $\tilde c_g = c_g$ as defined in
-the statement.  Each $c_g$ is the largest cosine between $V_g \ominus
-(\text{intersection})$ and the pooled span of the later factors, i.e.,
-the largest non-unit generalized singular value of the level-space
-pencil formed from $\bD_g$, the stacked cross-tabulations
-$(\bB_{g,g+1}, \dots, \bB_{g,G})$, and the pooled Gram matrix of the
-later factors---computable by a small dense or sparse eigenproblem.
-Positivity of all angles ($c_g < 1$) is equivalent to $V_g \cap
-(V_{g+1} + \dots + V_G) = \text{flats}$ for each $g$, which is
-identification.
-
-\emph{(iv)}  For $G = 2$ the sweep operator eigenvalues are those of
-$\bD_2^{-1}\bB_{21}\bD_1^{-1}\bB_{12}$ (Appendix~\ref{app:global},
-proof of Theorem~\ref{thm:rate}(ii)), whose non-unit spectrum is
-$\{\sigma_i^2\}$ of the normalized biadjacency kernel, giving
-$\rho_{\mathrm{GS}} = \sigma_2^2 = c_F^2$; the bound in (iii) has a
-single factor, $(1 - (1 - c_F^2))^{1/2} = c_F$. \qed
-
-% =========================================================================
-\section{Proofs for Section~\ref{sec:asymptotics}}\label{app:classical}
-% =========================================================================
-
-\subsection{Proof of Theorem~\ref{thm:classical}}
-
-Under Assumption~\ref{ass:classical}, the normalizing regularity and
-divergence conditions of \citet[Sec.~3]{fahrmeir1985} hold
-for the canonical-link exponential family with bounded covariates:
-their normed information $\bF_N^{-1/2}$ exists for large $N$, and
-their Theorems~1--2 give existence, consistency, and
-$\bF_N^{1/2}(\hat\btheta_N - \btheta_0) \convd \mathcal{N}(\bzero,
-\phi \bI)$; Assumption~\ref{ass:classical}(ii) converts this to the
-stated $\sqrt N$ form.  Efficiency is the standard exponential-family
-Cram\'er--Rao attainment.  Under correct mean but misspecified
-distribution, the estimator is the PML estimator of
-\citet{gourieroux1984} for the linear exponential family, whose
-Theorem~3 gives the sandwich limit; consistency of the cell-accumulated
-sandwich estimator follows from the law of large numbers applied to
-$\hat u_i^2$-weighted design moments, using the uniform consistency of
-$\hat\mu_i$ on bounded designs. \qed
-
-\subsection{Proof of Theorem~\ref{thm:diverging}}\label{app:diverging}
-
-Normalize $\phi = 1$.  Write $\bF = \bF_N(\btheta_0)$ (positive
-definite for large $N$ by Assumption~\ref{ass:diverging}(ii), which
-presupposes invertibility), $\bU = \bU(\btheta_0)$, and change variables
-$\bs = \bF^{1/2}(\btheta - \btheta_0)$, $g(\bs) = \ell(\btheta_0 +
-\bF^{-1/2}\bs)$.  Then $g$ is concave, $\nabla g(\bzero) =
-\bF^{-1/2}\bU$, and $\nabla^2 g(\bs) = -\bF^{-1/2}\bH(\btheta_{\bs})
-\bF^{-1/2}$.
-
-\emph{Step 1: score bound.}  $\E\|\nabla g(\bzero)\|^2 =
-\tr(\bF^{-1/2}\,\Var(\bU)\,\bF^{-1/2}) = q_N$ by the information
-equality, so $\|\nabla g(\bzero)\| = O_p(\sqrt{q_N})$.
-
-\emph{Step 2: uniform curvature control.}  Fix $r \ge 1$ and let
-$\|\bs\| \le r\sqrt{q_N}$.  By Assumption~\ref{ass:diverging}(i,iv),
-$\omega_i = b''(\eta_{0i}) \in [\underline\omega, \bar\omega]$ with
-$0 < \underline\omega \le \bar\omega < \infty$, and the balanced-leverage
-condition gives $\|\bF^{-1/2}\ba_i\|^2 = h_i/\omega_i \le C q_N /
-(N\underline\omega)$.  Hence
-\[
-\max_i |\eta_i(\btheta_{\bs}) - \eta_{0i}|
- = \max_i |\ba_i'\bF^{-1/2}\bs|
- \le r\sqrt{q_N} \cdot \sqrt{C q_N / (N \underline\omega)}
- = C_r\, q_N/\sqrt{N} =: \varepsilon_N \to 0
-\]
-using $q_N^2/N \to 0$.  With $L$ the Lipschitz constant of $b''$ on the
-relevant compact set,
-$\big| \sum_i \{b''(\eta_i(\btheta_\bs)) - b''(\eta_{0i})\}
-(\ba_i'\bu)^2 \big| \le (L\varepsilon_N/\underline\omega)\, \bu'\bF\bu$
-for all $\bu$, so uniformly on the ball,
-\begin{equation}\label{eq:hessian-sandwich}
--(1 + \delta_N)\,\bI \preceq \nabla^2 g(\bs) \preceq
--(1 - \delta_N)\,\bI ,
-\qquad \delta_N := L\varepsilon_N/\underline\omega \to 0 .
-\end{equation}
-
-\emph{Step 3: existence and rate.}  On $\|\bs\| = r\sqrt{q_N}$, a
-second-order Taylor expansion with \eqref{eq:hessian-sandwich} gives
-$g(\bs) - g(\bzero) \le \|\nabla g(\bzero)\| r\sqrt{q_N} - \tfrac12(1 -
-\delta_N) r^2 q_N$.  On the event $\{\|\nabla g(\bzero)\| \le K
-\sqrt{q_N}\}$, whose probability exceeds $1 - K^{-2} \E\|\nabla
-g(0)\|^2/q_N = 1 - K^{-2}$, the right side is negative for $r > 4K$;
-concavity of $g$ then confines the (unique, by strict concavity)
-maximizer $\hat\bs$ to the open ball, proving existence and
-$\|\hat\bs\| = \|\bF^{1/2}(\hat\btheta - \btheta_0)\| =
-O_p(\sqrt{q_N})$.
-
-\emph{Step 4: asymptotic linearity.}  By the integral form of the mean
-value theorem, $\bzero = \nabla g(\hat\bs) = \nabla g(\bzero) -
-\tilde{\mathbf{J}} \hat\bs$ with $\tilde{\mathbf{J}} = -\int_0^1
-\nabla^2 g(t \hat\bs)\dd t$; by \eqref{eq:hessian-sandwich},
-$\|\tilde{\mathbf{J}} - \bI\| \le \delta_N$, so
-\[
-\|\hat\bs - \nabla g(\bzero)\|
- \le \frac{\delta_N}{1 - \delta_N} \|\nabla g(\bzero)\|
- = O_p\!\left( \frac{q_N}{\sqrt N} \sqrt{q_N} \right)
- = O_p\!\left( q_N^{3/2}/\sqrt{N} \right) = o_p(1)
-\]
-under $q_N^3/N \to 0$.
-
-\emph{Step 5: contrasts.}  For $\bC_N$ with $\bm{\Sigma}_{C,N} =
-\bC_N'\bF^{-1}\bC_N \to \bm{\Sigma}_C \succ \bzero$ and any fixed
-$\bv \in \R^d$, write $Z_N = \bv'\bm{\Sigma}_{C,N}^{-1/2}\bC_N'
-(\hat\btheta - \btheta_0) = \bv'\bm{\Sigma}_{C,N}^{-1/2}\bC_N'
-\bF^{-1/2}\hat\bs$.  The remainder from Step 4 contributes
-$\le \|\bm{\Sigma}_{C,N}^{-1/2}\bC_N'\bF^{-1/2}\|\, o_p(1) = o_p(1)$
-(the matrix has orthonormal-bounded rows by construction).  The main
-term is $\sum_i c_{N,i} (y_i - b'(\eta_{0i}))$ with $c_{N,i} =
-\bv'\bm{\Sigma}_{C,N}^{-1/2} \bC_N'\bF^{-1}\ba_i$: independent,
-mean-zero, total variance $\bv'\bv(1 + o(1))$, and
-$\max_i |c_{N,i}| \le \|\bv\|\, \|\bm{\Sigma}_{C,N}^{-1/2}\|\,
-\|\bC_N'\bF^{-1/2}\| \max_i \|\bF^{-1/2}\ba_i\| = O(\sqrt{q_N/N}) \to
-0$; since the residuals have uniformly bounded $(2+\epsilon)$
-moments on compact $\eta$-sets, the Lindeberg condition holds and
-$Z_N \convd \mathcal{N}(0, \|\bv\|^2)$; Cram\'er--Wold completes the
-claim.  Consistency of the plug-in variance follows from
-\eqref{eq:hessian-sandwich} evaluated at $\hat\bs$:
-$\|\bF^{-1/2}\bF(\hat\btheta)\bF^{-1/2} - \bI\| \le \delta_N'
-\convp 0$, which implies relative consistency of
-$\bC_N'\bF(\hat\btheta)^{-1}\bC_N$. \qed
-
-\subsection{Proof of Lemma~\ref{lem:conditional}}
-
-For fixed $\bgamma$ the inner maximization separates over cells;
-$\partial \ell/\partial \alpha_j = D_j - e^{\alpha_j} E_j(\bgamma)$ with
-$E_j(\bgamma) = \sum_i e^{\bgamma'\bx_{ij} + o_{ij}}$, giving
-$e^{\hat\alpha_j} = D_j / E_j$ for $D_j > 0$ (for $D_j = 0$ the supremum
-is approached as $\alpha_j \to -\infty$ and the cell contributes a
-$\bgamma$-free constant).  Substituting,
-\[
-\ell_p(\bgamma) = \sum_{j : D_j > 0} \Big\{ \sum_i y_{ij}
-(\bgamma'\bx_{ij} + o_{ij}) - D_j \log E_j(\bgamma) \Big\}
- + \sum_j D_j (\log D_j - 1) .
-\]
-The bracket equals $\sum_i y_{ij}\log \pi_{ij}(\bgamma)$ plus terms free
-of $\bgamma$, which is the multinomial log likelihood given $D_j$ up to
-the combinatorial constant; and the multinomial law given the total is
-the standard Poisson-splitting identity.  Concavity: $\bgamma \mapsto
-\log E_j(\bgamma)$ is log-sum-exp of affine maps, hence convex.
-Differentiating the bracket gives the stated score and, again, negative
-Hessian $\sum_j D_j \Var_{\pi_j}(\bx_j)$; the Schur form follows by
-evaluating \eqref{eq:moments} at $\hat\balpha(\bgamma)$, where $\mu_{ij}
-= D_j \pi_{ij}$, so $M_j^{(0)} = D_j$, $\mathbf{m}_j = D_j
-\E_{\pi_j}[\bx_j]$, and $\bQ - \sum_j \mathbf{m}_j\mathbf{m}_j'/M_j^{(0)}
-= \sum_j D_j \{\E_{\pi_j}[\bx\bx'] - \E_{\pi_j}[\bx]\E_{\pi_j}[\bx]'\}$.
-\qed
-
-\subsection{Proof of Theorem~\ref{thm:proportional}}
-
-Throughout, expectations condition on the (fixed) covariates, offsets,
-and cell effects; cells are independent.  Let $\ell_j(\bgamma)$ denote
-cell $j$'s conditional (multinomial) log likelihood and $L_J(\bgamma) =
-J^{-1}\sum_j \{\ell_j(\bgamma) - \ell_j(\bgamma_0)\}$, so that
-$\hat\bgamma_J$ maximizes the concave function $L_J$ by
-Lemma~\ref{lem:conditional}.
-
-\emph{(i) Consistency.}  Each summand satisfies, on the compact set
-$\Gamma$, $|\ell_j(\bgamma) - \ell_j(\bgamma_0)| \le 2 D_j
-\sup_{i,\bgamma\in\Gamma}|(\bgamma-\bgamma_0)'\bx_{ij}| \le C_\Gamma
-D_j$, and by Assumption~\ref{ass:proportional}(ii) the cell means are
-bounded, so $D_j$ has uniformly bounded moments of all orders; hence
-$\Var\{L_J(\bgamma)\} \le C/J \to 0$ and $L_J(\bgamma) - \E L_J(\bgamma)
-\convp 0$ pointwise.  The mean is a per-cell Kullback--Leibler
-divergence: $\E\{\ell_j(\bgamma) - \ell_j(\bgamma_0)\} = -\E\,
-\mathrm{KL}\big(\pi_j(\bgamma_0) \,\|\, \pi_j(\bgamma)\big) \le 0$, and
-a second-order expansion at $\bgamma_0$ with
-Assumption~\ref{ass:proportional}(iii) gives an $\epsilon_0 > 0$ and,
-for large $J$, $\E L_J(\bgamma) \le -\tfrac{\lambda}{4}\|\bgamma -
-\bgamma_0\|^2$ whenever $\|\bgamma - \bgamma_0\| \le \epsilon_0$;
-concavity of $\E L_J$ (with $\E L_J(\bgamma_0) = 0$) extends the strict
-separation to all of $\Gamma$: for $\|\bgamma - \bgamma_0\| \ge
-\epsilon$ with $\epsilon \le \epsilon_0$, evaluating along the segment
-from $\bgamma_0$ yields $\E L_J(\bgamma) \le
--\tfrac{\lambda\epsilon^2}{4}$.  By the convexity lemma
-\citep{andersen1982,pollard1991,niemiro1992}, pointwise convergence of
-the concave functions $L_J - \E L_J$ to $0$ is automatically uniform on
-compacts, and the argmax of $L_J$ converges in probability to
-$\bgamma_0$.
-
-\emph{(ii) Normality.}  The profile score at the truth is
-$\bU_J(\bgamma_0) = \sum_j \bs_j$ with $\bs_j = \sum_i (y_{ij} - D_j
-\pi_{ij}(\bgamma_0))\bx_{ij}$.  Conditionally on $D_j$ the multinomial
-model is correctly specified, so $\E[\bs_j \mid D_j] = \bzero$, hence
-$\E \bs_j = \bzero$ \emph{exactly, for every $J$ and every configuration
-of cell effects}---this is the absence of incidental-parameter bias.
-The summands are independent with $\Var(\bs_j) = \E[D_j
-\Var_{\pi_j}(\bx_j)]$ (conditional information equality), so
-$\Var(J^{-1/2}\bU_J) = \bar\bF_J(\bgamma_0)$, and $\|\bs_j\| \le
-2 D_j \max_i \|\bx_{ij}\|$ has bounded third moments, so Lyapunov's CLT
-gives $J^{-1/2}\bU_J \convd \mathcal{N}(\bzero, \bar\bF)$ by
-Assumption~\ref{ass:proportional}(iii).  For the Hessian, $J^{-1}\bH_p
-(\bgamma) = J^{-1}\sum_j D_j \Var_{\pi_j(\bgamma)}(\bx_j)$ is an average
-of independent terms, bounded by $C D_j$ and Lipschitz in $\bgamma$ with
-constant $\le C' D_j$ on $\Gamma$; a standard bracketing/finite-cover
-argument gives $\sup_{\|\bgamma - \bgamma_0\| \le \epsilon_J}
-\|J^{-1}\bH_p(\bgamma) - \bar\bF_J(\bgamma_0)\| \convp 0$ for any
-$\epsilon_J \to 0$.  A Taylor expansion of the score around $\bgamma_0$,
-solved at $\hat\bgamma_J$, then yields $\sqrt{J}(\hat\bgamma_J -
-\bgamma_0) = \bar\bF_J^{-1} J^{-1/2}\bU_J + o_p(1)$ and the stated
-limit.
-
-\emph{(iii) Variance estimation.}  Consistency of $J^{-1}
-\bH_p(\hat\bgamma_J)$ for $\lim \bar\bF_J$ is the uniform convergence
-just shown plus (i).  For the clustered estimator, $J^{-1}\sum_j
-\bs_j(\hat\bgamma)\bs_j(\hat\bgamma)'$: at $\bgamma_0$ the LLN with
-bounded fourth moments gives convergence to $\lim J^{-1}\sum_j
-\Var(\bs_j)$; the difference between evaluation at $\hat\bgamma$ and at
-$\bgamma_0$ is bounded by a Lipschitz-in-$\bgamma$ envelope with
-integrable constant times $\|\hat\bgamma - \bgamma_0\| \convp 0$.  If
-the within-cell joint distribution is misspecified but the conditional
-mean $\E[y_{ij}\mid D_j] = D_j\pi_{ij}(\bgamma_0)$ is correct, then
-$\E\bs_j = \bzero$ still holds, the same argument applies with
-$\Var(\bs_j)$ no longer equal to the conditional information, and the
-sandwich $\bH_p^{-1}(\sum_j \bs_j\bs_j')\bH_p^{-1}$ remains consistent;
-the $G/(G-1)$ correction is asymptotically negligible.
-
-\emph{(iv) Efficiency.}  In the model with unrestricted
-$(\alpha_1, \alpha_2, \dots)$, the nuisance tangent space at
-$(\bgamma_0, \balpha_0)$ is spanned, cell by cell, by the
-$\alpha_j$-scores $u_j = \sum_i (y_{ij} - \mu_{ij})$.  The efficient
-score for $\bgamma$ is the residual of the projection of the
-$\bgamma$-score onto this space; by independence across cells the
-projection is cellwise, and within cell $j$,
-$\E[(\sum_i (y_{ij}-\mu_{ij})\bx_{ij})\, u_j] = \sum_i \mu_{ij}
-\bx_{ij}$, $\E[u_j^2] = \sum_i \mu_{ij}$, so the projection residual is
-$\sum_i (y_{ij} - \mu_{ij})\bx_{ij} - \frac{\sum_i \mu_{ij}
-\bx_{ij}}{\sum_i \mu_{ij}} \sum_i (y_{ij} - \mu_{ij}) = \bs_j$ evaluated
-at the truth: exactly the conditional score.  The asymptotic variance in
-(ii) equals the inverse of the efficient information, so the bound is
-attained \citep[Ch.~25]{vandervaart1998}. \qed
-
-% =========================================================================
-\section{Proofs for Section~\ref{sec:extensions}}\label{app:extensions}
-% =========================================================================
-
-\subsection{Proof of Proposition~\ref{prop:penalized}}
-
-(i) Adding $\tfrac{\lambda_2}{2}\|\bgamma\|^2$ contributes $\lambda_2
-\bI_p$ to the $\bgamma$-block of the curvature and $-\lambda_2\bgamma$
-to its gradient; the modified system has the same dimensions and cost.
-(ii) The proximal Newton step minimizes the penalized quadratic model
-$m(\btheta) = -\bU'(\btheta - \btheta_t) + \tfrac12 (\btheta -
-\btheta_t)'\bF(\btheta - \btheta_t) + \lambda_1\|\bgamma\|_1$ (plus the
-ridge term); one coordinate update needs the corresponding row of $\bF$
-and the current residual of the linear system, both dense in
-$\R^{p+k}$, so a full cycle costs $O((p+k)^2)$---all references to data
-enter through $(\bU, \bF)$, which Theorem~\ref{thm:tilted} provides from
-one pass.  Since $-\ell$ is convex with locally Lipschitz Hessian and
-$\bF \succ \bzero$ near the solution, the inexact proximal Newton method
-converges locally quadratically \citep[Thms.~3.4--3.5]{leesun2014}.
-(iii) The KKT conditions are $|\,[\bU]_r - [\bF(\btheta -
-\btheta_t)]_r\,| \le \lambda_1$ for inactive $\gamma_r$, with equality
-sign structure for active ones: functions of $(\bU, \bF)$ only. \qed
-
-\subsection{Proof of Proposition~\ref{prop:firth}}
-
-For canonical links, $\bF(\btheta) = \sum_i b''(\eta_i)\ba_i\ba_i'$
-depends on $\btheta$ through the $\eta_i$, and $\partial \bF /
-\partial\theta_r = \sum_i b'''(\eta_i) a_{ir}\, \ba_i\ba_i'$.  Firth's
-adjustment \citep{firth1993} is $A_r = \tfrac12 \tr(\bF^{-1}
-\partial\bF/\partial\theta_r) = \tfrac12 \sum_i b'''(\eta_i) a_{ir}\,
-\ba_i'\bF^{-1}\ba_i = \sum_i h_i\, \frac{b'''(\eta_i)}{2 b''(\eta_i)}
-a_{ir}$ with $h_i = b''(\eta_i)\ba_i'\bF^{-1}\ba_i$: the adjusted score
-is the ordinary score with working residual $y_i - b'(\eta_i) + h_i
-b'''(\eta_i)/2b''(\eta_i)$, which the cell accumulation of
-Theorem~\ref{thm:tilted} ingests unchanged.  For the leverages, write
-the partitioned inverse blocks $\bV_{\gamma\gamma}, \bV_{\gamma\delta},
-\bV_{\delta\delta}$ of $\bF^{-1}$ and expand $\ba_i =
-(\bx_i', \bw_{j(i)}')'$:
-$\ba_i'\bF^{-1}\ba_i = \bx_i'\bV_{\gamma\gamma}\bx_i + 2\bx_i'
-(\bV_{\gamma\delta}\bw_{j(i)}) + \bw_{j(i)}'\bV_{\delta\delta}
-\bw_{j(i)}$.  Precomputing $\bc_j = \bV_{\gamma\delta}\bw_j$ ($O(Jkp)$)
-and $d_j = \bw_j'\bV_{\delta\delta}\bw_j$ ($O(Jk^2)$) leaves per-datum
-cost $O(p^2 + p)$, giving the stated totals; $b'''/2b''$ equals $1/2$
-for Poisson and $(1-2\mu_i)/2$ for the logit by direct computation.
-The quasi-scoring iteration and its properties are those of
-\citet{kosmidis2009}; finiteness of the penalized maximizer for binomial
-responses is Theorem~1 of \citet{heinze2002}. \qed
-
 \bibliographystyle{chicago}
 \bibliography{references}
 

@@ -1,8 +1,8 @@
 """
-Simulation study 5 (Section 6.5): the logit failure mode in the
-proportional regime, and its conditional-likelihood repair.
+Logit-bias study (Supplement, Section S4): the logit failure mode in
+the proportional regime, and its conditional-likelihood repair.
 
-Theorem 7 shows that the Poisson profile MLE is exactly unbiased at
+Supplement Theorem S6 shows that the Poisson profile MLE is exactly unbiased at
 J/N -> c because profiling coincides with conditioning.  For the logit
 the two operations differ: the profile (unconditional fixed-effects) MLE
 carries incidental-parameter bias of order 1/m -- for m = 2 the classic

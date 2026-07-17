@@ -1,11 +1,12 @@
 """
-Case study (Section 7): register-scale spatial epidemiology.
+Application (main paper, Section 6.2): register-scale spatial
+epidemiology.
 
 A fully reproducible, register-scale demonstration: N = 5 million
 person-year episodes, mortality modelled with
 
   * 10,000 municipality x year fixed effects (500 municipalities x 20
-    years), absorbed by the nonlinear Gauss--Seidel of Algorithm 1;
+    years), absorbed by the nonlinear Gauss--Seidel of Algorithm S1;
   * a cell-level design from education (4) x sex (2) x age band (12)
     = 96 categorical cells estimated via tilted moments;
   * two individual-level continuous covariates (standardised log income,
@@ -13,7 +14,7 @@ person-year episodes, mortality modelled with
 
 Rates, covariate effects, and the age gradient are calibrated to published
 Nordic register-based mortality studies; the data generator is part of the
-script, so every number in Section 7 of the paper can be reproduced
+script, so every number in Section 6.2 of the paper can be reproduced
 end-to-end on a laptop.  A dense dummy-variable fit would require a design
 matrix with ~9,700 columns (about 0.4 TB of doubles at N = 5 x 10^6), so
 the comparison fit is infeasible at full scale; exactness is instead

@@ -1,5 +1,5 @@
 """
-Simulation study 1 (Section 6.1): exactness and cost of tilted-moment Newton.
+Study 1 (main paper, Section 5.1): exactness and cost of tilted-moment Newton.
 
 For Poisson, logistic, and gamma models with a cell structure of J cells and
 p continuous covariates, we verify that

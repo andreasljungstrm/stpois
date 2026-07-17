@@ -3,8 +3,11 @@ tilted_glm.py -- Reference implementation of the tilted-cell-moment framework.
 
 Accompanies the manuscript
 
-    "Computationally Efficient Estimation of High-Dimensional Exponential
-     Family Models via Tilted Cell Moments and Alternating Projections".
+    "Exact Estimation of Exponential Family Models on Massive Mixed
+     Categorical-Continuous Data via Tilted Cell Moments"
+
+and its online supplement (absorption convergence theory, rates,
+high-dimensional asymptotics, Firth/penalized/conditional extensions).
 
 The module implements, for exponential dispersion families with canonical
 or non-canonical log-concave links:
@@ -16,16 +19,18 @@ or non-canonical log-concave links:
                       single O(N p_c) / O(N p_c^2) pass over the microdata;
                       optional absorption of additional high-dimensional
                       fixed-effect factors by nonlinear block Gauss--Seidel
-                      (Algorithm 1 / Theorems 2-4);
+                      (Algorithm S1; convergence theory in Supplement
+                      Theorems S1-S3);
   * `fit_full`     -- textbook dense Newton on the full design, used to
                       verify that the tilted iterates coincide with the full
-                      ones to machine precision (Section 6.1);
+                      ones to machine precision (Section 5.1);
   * `profile_poisson` -- the concentrated (profile) Poisson likelihood for
                       one absorbed cell factor, whose score and Hessian are
                       Schur complements of tilted moments; this is the
-                      estimator studied in the J/N -> c regime (Theorem 7);
+                      estimator studied in the J/N -> c regime (Supplement
+                      Theorem S6);
   * Firth's bias-reducing adjusted score integrated into the tilted
-                      accumulation (Proposition 4, Section 5.3);
+                      accumulation (Supplement Proposition S2);
   * observed-information, HC1-robust, and cluster-robust covariance
                       estimators computed cell-wise.
 
@@ -118,7 +123,7 @@ class GammaLog(Family):
 
     V(mu) = mu^2 and g'(mu) = 1/mu give omega = 1 identically; the tilted
     moments therefore reduce to untilted cell moments for this family, an
-    observation made in Section 5.1 of the paper.
+    observation made in Section 3 of the paper.
     """
 
     name = "gamma"
@@ -307,7 +312,7 @@ def _solve_absorbed_poisson(y, base_eta, absorb, alphas, tol=1e-10,
                             maxiter=1000):
     """Nonlinear block Gauss--Seidel over the absorbed factors at fixed
     (gamma, delta): Algorithm 1, inner loop.  Returns updated alphas and the
-    total absorbed contribution.  Monotone in the likelihood by Theorem 2."""
+    total absorbed contribution.  Monotone in the likelihood by Supplement Theorem S1."""
     G = len(absorb)
     contrib = np.zeros_like(base_eta)
     for g in range(G):
@@ -544,7 +549,7 @@ def fit_full(y, A, offset, family="poisson", tol=1e-9, maxiter=100,
 
 # ----------------------------------------------------------------------
 # Profile (concentrated) Poisson likelihood for one absorbed cell factor:
-# the estimator of the J/N -> c regime (Section 4.3 / Theorem 7)
+# the estimator of the J/N -> c regime (Supplement Theorem S6)
 # ----------------------------------------------------------------------
 
 
@@ -620,7 +625,8 @@ def demean_ap(v, factors, weights, tol=1e-12, maxiter=5000,
     """Weighted alternating projections: residual of projecting v onto the
     orthogonal complement of span{factor dummies} in the diag(weights)
     inner product.  Gauss--Seidel sweeps over the factors; the linear rate
-    for two factors is cos^2 of the Friedrichs angle (Theorem 3)."""
+    for two factors is cos^2 of the Friedrichs angle (Supplement
+    Theorem S2)."""
     v = v.astype(float).copy()
     wsums = [np.bincount(f, weights=weights) for f in factors]
     history = []
@@ -645,7 +651,7 @@ def friedrichs_rate(f1, f2, weights):
     """Predicted asymptotic linear rate of the two-factor weighted
     alternating projections: sigma_2^2, with sigma_2 the second-largest
     singular value of the weighted bipartite transition kernel
-    D_1^{-1/2} B D_2^{-1/2}  (Theorem 3 / Corollary 2)."""
+    D_1^{-1/2} B D_2^{-1/2}  (Supplement Theorem S2 / Corollary S1)."""
     J1, J2 = int(f1.max()) + 1, int(f2.max()) + 1
     B = np.zeros((J1, J2))
     np.add.at(B, (f1, f2), weights)
@@ -687,7 +693,7 @@ def flops_per_iteration(N, p, k):
 
 # ----------------------------------------------------------------------
 # G >= 3 absorbed factors: exact local rate and Friedrichs product bound
-# (Theorem 4 of the paper)
+# (Supplement Theorem S3)
 # ----------------------------------------------------------------------
 
 
@@ -695,7 +701,7 @@ def _level_space_blocks(factors, weights):
     """Assemble the level-space information blocks of the absorbed
     factors: diagonal weight totals D_g and pairwise weighted
     cross-tabulations B[g][h] (J_g x J_h).  These pairwise tables
-    determine F_alpha,alpha completely -- the basis of Theorem 4(i)."""
+    determine F_alpha,alpha completely -- the basis of Supplement Theorem S3(i)."""
     G = len(factors)
     J = [int(f.max()) + 1 for f in factors]
     D = [np.bincount(f, weights=weights, minlength=J[g])
@@ -713,7 +719,7 @@ def _level_space_blocks(factors, weights):
 def gs_spectral_rate(factors, weights, tol=1e-10):
     """Exact asymptotic per-sweep rate of the nonlinear Gauss--Seidel /
     weighted alternating projections over G >= 2 absorbed factors
-    (Theorem 4(i)): the spectral radius of the block Gauss--Seidel
+    (Supplement Theorem S3(i)): the spectral radius of the block Gauss--Seidel
     operator of F_alpha,alpha on the quotient by its null space.
 
     The operator lives on the level space (dimension sum_g J_g) and is
@@ -741,7 +747,7 @@ def gs_spectral_rate(factors, weights, tol=1e-10):
 
 
 def friedrichs_product_bound(factors, weights):
-    """A priori upper bound on the per-sweep contraction (Theorem 4(ii)):
+    """A priori upper bound on the per-sweep contraction (Supplement Theorem S3(ii)):
     the one-sweep operator norm of the demeaning cycle obeys the
     Smith--Solmon--Wagner / Deutsch--Hundal product bound
 

@@ -1,6 +1,7 @@
 """
-Simulation study 2 (Section 6.2): linear convergence rate of the weighted
-alternating projections and its spectral prediction (Theorem 3).
+Rate study (Supplement, Section S4): linear convergence of the weighted
+alternating projections and its spectral prediction (Supplement
+Theorem S2).
 
 Two absorbed factors (J1 "regions" and J2 "cohorts") with an assignment
 mechanism whose mixing parameter rho controls how strongly the factors are
@@ -11,7 +12,7 @@ approaches 1, and the demeaning slows down exactly as predicted.
 
 For each rho we
   * compute the predicted asymptotic rate sigma_2^2 from the weighted
-    bipartite transition kernel (Corollary 2), and
+    bipartite transition kernel (Supplement Corollary S1), and
   * measure the empirical per-sweep contraction factor of the weighted
     alternating projections on the IRLS working variable at the Poisson
     optimum weights.
@@ -74,7 +75,7 @@ def main():
 
 
 def main_G3():
-    """G = 3 absorbed factors (Section 6.2, Theorem 4): empirical
+    """G = 3 absorbed factors (Supplement S4, Theorem S3): empirical
     per-sweep contraction vs the exact level-space spectral rate and the
     Friedrichs product upper bound."""
     from tilted_glm import gs_spectral_rate, friedrichs_product_bound

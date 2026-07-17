@@ -1,58 +1,70 @@
-# Theoretical / methodological paper (computational statistics)
+# Computational statistics paper (main + online supplement)
 
 This directory contains the manuscript
 
-> **Computationally Efficient Estimation of High-Dimensional Exponential
-> Family Models via Tilted Cell Moments and Alternating Projections**
+> **Exact Estimation of Exponential Family Models on Massive Mixed
+> Categorical–Continuous Data via Tilted Cell Moments**
 
-targeted at a computational statistics journal (formatted in the style of
-the *Journal of Computational and Graphical Statistics*).  It is the
-theoretical companion to the `stpois` software article in `paper/sj/` and
-`paper/arxiv/`: the Stata-specific material is stripped out, the
-framework is generalized from Poisson event-history models to arbitrary
-exponential dispersion families, and the paper's contributions are
-theorems rather than commands:
+targeted at a computational statistics journal (JCGS-style), together
+with its **online supplement**.  It is the theoretical/methodological
+companion to the `stpois` software article in `paper/sj/` and
+`paper/arxiv/`.
 
-1. **Theorem 1 (+ Corollary 1).** Exact representation of the score and
-   information as exponentially tilted within-cell moments; per-iteration
-   complexity O(N·p²+J·k²) instead of O(N·(p+k)²), with no approximation.
-2. **Theorems 2–4 (+ Corollary 2).** Global convergence of the nonlinear
-   block Gauss–Seidel fixed-effect absorption cycle for canonical and,
-   more generally, log-concave links (the gap noted in the applied
-   HDFE-GLM literature), and its local linear rate: for two absorbed
-   factors the contraction equals cos²(Friedrichs angle) = the squared
-   second singular value of a weighted bipartite transition kernel; for
-   G ≥ 3 factors the exact rate is the spectral radius of a level-space
-   sweep operator determined by the pairwise weighted cross-tabulations
-   alone (computable before touching the microdata, doubling as an
-   identification diagnostic), with a Friedrichs product-of-sines norm
-   certificate as an a priori bound.
-3. **Theorems 5–7.** Asymptotics in three regimes: fixed dimension;
-   diverging dimension with q³/N → 0 (self-contained proof in the
-   intrinsic norm under a balanced-leverage condition); and the
-   proportional regime J/N → c for Poisson, where profile = conditional
-   likelihood implies no incidental-parameter bias, asymptotic normality,
-   efficiency, and valid cluster-robust inference.  The logit failure of
-   this coincidence (Andersen's 2γ limit at m = 2) is quantified and
-   repaired by the exact conditional-logit estimator at the same
-   cell-collapsed cost.
-4. **Propositions 3–4.** Penalized (ridge/lasso, proximal Newton)
-   estimation at cell-collapsed cost, and Firth's bias-reducing
-   adjustment computed inside the tilted pass.
+## Structure
+
+**Main paper (`main.tex` → `main.pdf`, ~19 pp.)** — one computational
+idea developed end to end:
+
+1. *Proposition 1.* Ordinary cell collapse fails with continuous
+   covariates: evaluating the likelihood function requires the entire
+   within-cell empirical distribution (Laplace-transform uniqueness).
+2. *Theorem 1 + Corollary 1.* The exact score and Fisher information at
+   any parameter value are three low-order moments of an exponentially
+   tilted within-cell measure; each Newton/Fisher iteration costs one
+   streaming O(N·p²) pass plus O(J·k²) cell algebra, and the iterates
+   are identical to full-design Newton.  Proposition 2 covers
+   non-canonical links (gamma–log: weights ≡ 1).
+3. Algorithms and implementation: streaming pass, numerical safeguards,
+   memory/parallelism, exact cell-accumulated robust/cluster VCEs, and
+   the composition with absorbed fixed-effect factors.
+4. Experiments: iterate-level exactness at 1e-13–1e-15 (Poisson,
+   logistic, gamma); total-time benchmarks vs dense Newton,
+   `statsmodels`, and a sparse-design IRLS; imbalance and rare-event
+   sensitivity.
+5. Applications: the public `nycflights13` data (327k flights, logistic
+   on-time model, J=3,863 cells, verified against `statsmodels` at 10x
+   less cost) and a register-scale synthetic study (5M episodes, 10,000
+   absorbed municipality–year effects, seconds on one core).
+
+**Online supplement (`supplement.tex` → `supplement.pdf`, ~26 pp.)** —
+companion theory with proofs and simulations:
+
+- *Theorems S1–S3, Corollary S1.* Global convergence of the nonlinear
+  block Gauss–Seidel absorption cycle for canonical and log-concave
+  links; local rate = cos²(Friedrichs angle) = bipartite spectral gap
+  for two factors; for G ≥ 3, the exact rate as the spectral radius of
+  a level-space sweep operator built from pairwise cross-tabulations,
+  with a product-of-sines certificate.
+- *Theorems S4–S6.* Asymptotics: fixed dimension; diverging dimension
+  (q³/N → 0, balanced leverage); the proportional regime J/N → c for
+  Poisson (profile = conditional likelihood ⇒ no incidental-parameter
+  bias, valid cluster-robust inference), and the logit
+  failure-and-repair (Andersen's 2γ limit; exact conditional logit).
+- Firth's adjustment inside the tilted pass (Proposition S2), penalized
+  estimation (Proposition S1), and simulation studies for all of the
+  above.
 
 ## Files
 
-- `main.tex`, `references.bib` — the manuscript (compile with
-  `make`, or `pdflatex → bibtex → pdflatex ×2`).
-- `main.pdf` — compiled manuscript.
-- `code/` — self-contained Python/NumPy reference implementation and all
-  simulation/case-study scripts (see `code/README.md`).  Every number in
-  Sections 6–7 of the paper regenerates from these scripts with fixed
-  seeds.
+- `main.tex`, `supplement.tex`, `references.bib` — sources (shared
+  bibliography); `main.pdf`, `supplement.pdf` — compiled.
+- `code/` — self-contained Python/NumPy reference implementation and
+  all experiment scripts (see `code/README.md`).  Every number in both
+  documents regenerates from these scripts with fixed seeds.
 
 ## Build
 
 ```sh
-make            # builds main.pdf (needs texlive incl. natbib/booktabs/algorithm)
+make            # builds main.pdf and supplement.pdf
 make clean
 ```

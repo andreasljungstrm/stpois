@@ -1,13 +1,13 @@
 """
-Simulation study 4 (Section 6.4): separation and Firth-adjusted tilted
-moments.
+Separation study (Supplement, Section S4): separation and the
+Firth-adjusted tilted pass.
 
 Logistic model with a cell structure and a rare binary covariate z that is
 quasi-separating with non-negligible probability in small samples: in cells
 of one stratum, z = 1 occurs only among events.  The unadjusted MLE then
 diverges (|gamma_z| -> infinity along the iterations, likelihood approaches
 a finite supremum that is not attained); Firth's bias-reducing penalty,
-computed inside the tilted-moment accumulation (Proposition 4), keeps the
+computed inside the tilted-moment accumulation (Supplement Proposition S2), keeps the
 maximiser finite and second-order unbiased.
 
 We report, over REPS replications at each N:
