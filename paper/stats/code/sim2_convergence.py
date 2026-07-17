@@ -73,5 +73,41 @@ def main():
         wr.writerows(rows)
 
 
+def main_G3():
+    """G = 3 absorbed factors (Section 6.2, Theorem 4): empirical
+    per-sweep contraction vs the exact level-space spectral rate and the
+    Friedrichs product upper bound."""
+    from tilted_glm import gs_spectral_rate, friedrichs_product_bound
+    import csv
+    N, J1, J2, J3 = 200_000, 100, 80, 60
+    rows = []
+    for rho in [0.0, 0.3, 0.6, 0.8, 0.9, 0.95]:
+        f1 = rng.integers(0, J1, size=N)
+        al2 = rng.random(N) < rho
+        f2 = np.where(al2, (f1 * J2) // J1, rng.integers(0, J2, size=N))
+        al3 = rng.random(N) < rho
+        f3 = np.where(al3, (f2 * J3) // J2, rng.integers(0, J3, size=N))
+        a1 = rng.normal(0, 0.4, J1)
+        a2 = rng.normal(0, 0.4, J2)
+        a3 = rng.normal(0, 0.4, J3)
+        eta = -3.0 + a1[f1] + a2[f2] + a3[f3] + 0.3 * rng.normal(size=N)
+        w = np.exp(eta)
+        exact = gs_spectral_rate([f1, f2, f3], w)
+        bound = friedrichs_product_bound([f1, f2, f3], w)
+        x = rng.normal(size=N) + 0.5 * a1[f1] - 0.3 * a2[f2] + 0.2 * a3[f3]
+        _, hist, iters = demean_ap(x, [f1, f2, f3], w, tol=1e-13,
+                                   maxiter=40000, return_history=True)
+        emp = empirical_rate(hist)
+        rows.append(dict(rho=rho, exact=exact, empirical=emp, bound=bound,
+                         sweeps=iters))
+        print(f"G=3 rho={rho:4.2f} exact={exact:.6f} empirical={emp:.6f} "
+              f"bound={bound:.6f} sweeps={iters}")
+    with open("output/sim2_convergence_G3.csv", "w", newline="") as fh:
+        wr = csv.DictWriter(fh, fieldnames=rows[0].keys())
+        wr.writeheader()
+        wr.writerows(rows)
+
+
 if __name__ == "__main__":
     main()
+    main_G3()

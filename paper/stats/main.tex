@@ -107,26 +107,33 @@ continuous covariates only, followed by algebra on the $J$ cells.  For
 additional fixed-effect factors we analyze the nonlinear block
 Gauss--Seidel scheme that alternates closed-form profile updates of the
 absorbed effects with tilted-moment Newton steps.  We prove its global
-convergence to the maximum-likelihood estimate for canonical links---%
-resolving a gap repeatedly noted in the applied literature---and derive
-its local linear rate, which for two absorbed factors equals the squared
-Friedrichs angle cosine between the weighted fixed-effect subspaces and,
-equivalently, one minus the spectral gap of a weighted bipartite graph
-Laplacian.  We then develop asymptotic theory in three regimes: fixed
+convergence to the maximum-likelihood estimate for canonical and, more
+generally, log-concave links---resolving a gap repeatedly noted in the
+applied literature---and derive its local linear rate: for two absorbed
+factors it equals the squared Friedrichs angle cosine between the
+weighted fixed-effect subspaces (one minus the spectral gap of a
+weighted bipartite graph Laplacian), and for any number of factors it is
+the spectral radius of a level-space sweep operator determined by the
+pairwise weighted cross-tabulations alone, computable before touching
+the microdata, with a product-of-sines certificate as an a priori
+bound.  We then develop asymptotic theory in three regimes: fixed
 dimension; a diverging number of cells with
 $q_N^3/N \to 0$; and, for the Poisson family, the proportional regime
 $J/N \to c \in (0,1)$ with bounded cell sizes, where a conditional-likelihood
 representation of the profile likelihood yields consistency, asymptotic
 normality, and valid cluster-robust inference with no
-incidental-parameter bias.  Extensions cover logistic and gamma models,
+incidental-parameter bias; for the logit, where the representation
+fails, we quantify the resulting $O(1/m)$ bias and show that the exact
+conditional estimator repairs it at the same cell-collapsed cost.
+Extensions cover logistic and gamma models,
 $\ell_1/\ell_2$-penalized estimation by proximal Newton at cell-collapsed
 cost, and Firth's bias-reducing adjustment computed inside the tilted
 accumulation as a principled response to separation.  Simulations confirm
 that the tilted iterates equal the full-data Newton iterates to machine
-precision at a small fraction of the cost, that observed convergence rates
-match the spectral prediction to three decimals, and that nominal $95\%$
-intervals attain $94$--$96\%$ coverage even with one fixed effect per two
-observations.  A register-scale case study with five million person-year
+precision at a small fraction of the cost, that observed convergence
+rates match the spectral predictions to three decimals for two and three
+absorbed factors alike, and that nominal $95\%$ intervals attain
+$94$--$96\%$ coverage even with one fixed effect per two observations.  A register-scale case study with five million person-year
 episodes and $10{,}000$ absorbed municipality--year effects runs in
 seconds on a laptop.  The framework is implemented in the Stata package
 \texttt{stpois} and in an open-source reference implementation.
@@ -228,18 +235,32 @@ damped tilted-moment Newton steps for the covariate block.  Theorem~\ref{thm:glo
 establishes global convergence to the MLE whenever the MLE exists,
 under conditions that are sharp in the sense that failure of each
 corresponds to a recognizable data pathology (separation, disconnected
-designs).  Theorem~\ref{thm:rate} derives the local convergence rate: the
-iteration contracts linearly with factor equal to the spectral radius of
-the block Gauss--Seidel operator of the information matrix at the
-optimum; for two absorbed factors this radius equals
+designs).  The theorem covers canonical links and, beyond them, the full class of
+log-concave links in the sense of \citet{pratt1981}---so the guarantee
+extends to gamma--log and probit models, and we state explicitly where
+it stops.  Theorem~\ref{thm:rate} derives the local convergence rate:
+the iteration contracts linearly with factor equal to the spectral
+radius of the block Gauss--Seidel operator of the information matrix at
+the optimum; for two absorbed factors this radius equals
 $\cos^2\theta_F$, the squared cosine of the Friedrichs angle between the
 weighted fixed-effect subspaces \citep{aronszajn1950,kayalar1988,deutsch2001},
 and Corollary~\ref{cor:bipartite} identifies $1-\cos^2\theta_F$ with the
 spectral gap of a weighted bipartite graph built from the two factors---%
 making precise, and quantitative, the folklore that alternating
 projections slow down when fixed effects are ``highly correlated''
-\citep{gaure2013}.  Simulations in Section~\ref{sec:sim-rate} match the
-predicted rates to three decimal places.
+\citep{gaure2013}.  For three or more absorbed factors, where the
+alternating-projections literature offers only norm bounds,
+Theorem~\ref{thm:multiG} shows that the exact rate is nevertheless a
+computable object: the information blocks of the absorbed factors are
+determined by their pairwise weighted cross-tabulations, the flat
+directions are semisimple eigenvalue-one fixed points of the sweep
+operator, and the rate is the largest remaining eigenvalue
+modulus---obtainable by power iteration on the level space before
+touching the microdata, with a Friedrichs product-of-sines certificate
+\citep{smith1977,deutschhundal1997} as an a priori bound and an exact
+identification diagnostic as a by-product.  Simulations in
+Section~\ref{sec:sim-rate} match the predicted rates to three decimal
+places for $G = 2$ and $G = 3$ alike.
 
 \emph{Third: asymptotic theory, including high-dimensional regimes}
 (Section~\ref{sec:asymptotics}).  Because the tilted-moment estimator
@@ -265,9 +286,13 @@ consistency of both the profile-information and the cell-clustered
 sandwich variance estimators, all at $J/N \to c$.  The contrast with the
 logit family, where the profile and conditional likelihoods differ and
 bias of order $1/m$ persists \citep{andersen1970,fernandezval2016}, is
-discussed.  Simulations with one fixed effect per \emph{two} observations
-show nominal $95\%$ intervals covering at $94$--$96\%$
-(Section~\ref{sec:sim-highdim}).
+developed in full: we quantify the failure (the $m = 2$ profile MLE
+approaches Andersen's $2\gamma_0$ limit) and show that the exact
+conditional-logit estimator of \citet{chamberlain1980}, computed
+cellwise via symmetric-function recursions, removes it within the same
+framework (Section~\ref{sec:sim-logit}).  Simulations with one fixed
+effect per \emph{two} observations show nominal $95\%$ intervals
+covering at $94$--$96\%$ (Section~\ref{sec:sim-highdim}).
 
 \emph{Fourth: extensions that inherit the computational structure}
 (Section~\ref{sec:extensions}).  Logistic and gamma regression fit the
@@ -676,8 +701,37 @@ in the quotient $\R^{q+\sum J_g}/\mathcal{K}$; in particular
 $\bbeta_t \to \bbeta^\ast$ whenever the normalization places the flat
 directions in the absorbed blocks; and (iii) the same conclusions hold if
 the $\bbeta$-update is replaced by exact block maximization, and for any
-cyclic or essentially-cyclic ordering of the blocks.
+cyclic or essentially-cyclic ordering of the blocks; and (iv)
+Assumption~\ref{ass:canonical} may be weakened to the requirement that
+the link be twice continuously differentiable with each per-observation
+log-likelihood contribution strictly concave in its linear predictor
+(a \emph{log-concave link}; \citealp{pratt1981}), provided the
+$\bbeta$-step is an Armijo-damped ascent step with a symmetric
+preconditioner whose eigenvalues are bounded within $[\underline\lambda,
+\bar\lambda] \subset (0,\infty)$ on the initial superlevel
+set---Fisher scoring in particular.
 \end{theorem}
+
+Part (iv) settles the scope of the guarantee beyond canonical links.
+Log-concavity of the per-observation contribution in $\eta_i$ is exactly
+the condition under which the proof's three ingredients
+survive---concavity of $\ell$ in $\btheta$, unique finite block
+maximizers, and sufficient ascent of a preconditioned gradient
+step---and it is satisfied well beyond the canonical family:
+\citet{pratt1981} characterizes the log-concave links, which include
+the gamma family with log link (each contribution
+$-\nu\{y_i e^{-\eta_i} + \eta_i\}$ has second derivative
+$-\nu y_i e^{-\eta_i} < 0$), the binomial probit, and the binomial
+complementary log-log.  For the gamma--log pair the absorbed blocks even
+retain a closed-form update,
+$\alpha^{(g)}_a = \log\{ m_a^{-1} \sum_{i : g(i)=a} y_i
+\exp(-(\eta_i - \alpha^{(g)}_a))\}$ with $m_a$ the group size, so
+Algorithm~\ref{alg:absorb} applies unchanged.  For links outside this
+class the log likelihood need not be concave in $\btheta$ and the
+guarantee weakens to what smooth ascent methods generically provide:
+monotone likelihood ascent with stationary limit points, without a
+global claim; we state this boundary explicitly since it is where the
+folk confidence in the algorithm stops being a theorem.
 
 The proof (Appendix~\ref{app:global}) proceeds by establishing that
 strict concavity on the quotient plus attainment forces compact
@@ -777,6 +831,99 @@ $\sigma_2 \uparrow 1$ and predictably slow demeaning, while balanced
 crossed designs have small $\sigma_2$ and converge in a handful of
 sweeps.  Section~\ref{sec:sim-rate} verifies the prediction to three
 decimals across two orders of magnitude of $1 - c_F^2$.
+
+\subsection{Three or more absorbed factors}\label{sec:multiG}
+
+Administrative designs routinely absorb three or more factors---worker,
+firm, and region--year, say---and for $G \ge 3$ the linear
+alternating-projections literature offers norm bounds but no clean angle
+characterization of the asymptotic rate \citep{deutsch2001,badea2012}.
+The following theorem resolves the practical question for our setting:
+the exact local rate for any $G$ is a computable spectral quantity
+determined by the \emph{pairwise} weighted contingency structure of the
+factors alone, so the bipartite intuition of
+Corollary~\ref{cor:bipartite} does not break down at $G \ge 3$---it
+generalizes, with the pair graph replaced by a $G$-partite sweep
+operator.  For each pair $g \ne h$ define the weighted cross-tabulation
+$\bB_{gh} \in \R^{J_g \times J_h}$,
+$(\bB_{gh})_{ab} = \sum_{i : g(i)=a,\, h(i)=b} \omega_i^\ast$, and the
+level totals $\bD_g = \diag(\bB_{gh}\mathbf{1})$ (independent of $h$).
+
+\begin{theorem}[Exact rate and certificates for $G \ge 2$ factors]
+\label{thm:multiG}
+Let the assumptions of Theorem~\ref{thm:rate} hold and let
+$\mathcal{F} = \bF_{\balpha\balpha}(\btheta^\ast)$ denote the absorbed-block
+information on the level space $\R^{J_1 + \dots + J_G}$.
+\begin{enumerate}
+\item[(i)] \emph{(Pairwise sufficiency.)}  $\mathcal{F}$ has diagonal
+blocks $\bD_g$ and off-diagonal blocks $\bB_{gh}$; hence the local rate
+$\rho_{\mathrm{GS}}$ of Theorem~\ref{thm:rate}(i) is a function of the
+pairwise weighted cross-tabulations only, and can be evaluated without
+access to the microdata once the $G(G-1)/2$ tables are accumulated (one
+$O(N)$ pass).
+\item[(ii)] \emph{(Exact computable rate.)}  Write $\mathcal{F} =
+\mathcal{D} + \mathcal{L} + \mathcal{L}'$ with $\mathcal{D} =
+\diag(\bD_1, \dots, \bD_G)$ and $\mathcal{L}$ strictly block lower
+triangular, and let $\mathbf{M} = -(\mathcal{D} +
+\mathcal{L})^{-1}\mathcal{L}'$ be the sweep operator.  Then the
+eigenspace of $\mathbf{M}$ for the eigenvalue $1$ is exactly
+$\operatorname{null}(\mathcal{F})$ (the flat shift directions), this
+eigenvalue is semisimple, and
+\[
+\rho_{\mathrm{GS}}
+ = \max\big\{ |\lambda| : \lambda \in \operatorname{spec}(\mathbf{M}),\;
+   \lambda \ne 1 \big\} < 1
+ \iff \operatorname{null}(\mathcal{F}) = \text{flats}
+ \iff \text{the multi-way design is identified}.
+\]
+Because the eigenvalue $1$ is semisimple, successive differences of the
+sweep iteration decay at exactly $\rho_{\mathrm{GS}}$, so the rate is
+computable by power iteration on the level space at
+$O\big(\sum_{g<h} \operatorname{nnz}(\bB_{gh})\big)$ per step.
+\item[(iii)] \emph{(A priori certificate.)}  With $c_g$ the Friedrichs
+cosine, in the $\Omega^\ast$ inner product, between $V_g$ and
+$V_{g+1} + \dots + V_G$ for $g = 1, \dots, G-1$,
+\[
+\rho_{\mathrm{GS}}
+ \;\le\; \big\| \text{one demeaning sweep} \big\|_{\Omega^\ast}
+ \;\le\; \Big( 1 - \prod_{g=1}^{G-1} \big(1 - c_g^2\big) \Big)^{1/2},
+\]
+each $c_g$ again being a level-space quantity (the largest
+non-unit generalized singular value between factor $g$ and the pooled
+design of the later factors); $c_g < 1$ for all $g$ if and only if the
+design is identified.
+\item[(iv)] For $G = 2$, (ii) reduces to $\rho_{\mathrm{GS}} =
+c_F^2 = \sigma_2^2$ of Corollary~\ref{cor:bipartite}, and the bound in
+(iii) to $c_F$.
+\end{enumerate}
+\end{theorem}
+
+Three comments.  First, part (ii) is the operative solution for
+practice: the exact rate is available \emph{before iterating on the
+microdata}, from cross-tabulations that cost one linear pass, by power
+iteration on vectors of length $\sum_g J_g$; the reference
+implementation exposes this as \texttt{gs\_spectral\_rate}, and
+Section~\ref{sec:sim-rate} shows it matching observed contraction
+factors to three decimals for $G = 3$ exactly as for $G = 2$.  Second,
+part (iii) gives the interpretable geometry: each successive factor
+slows the sweep according to its angle to the span of the factors after
+it, the product-of-sines form being the multi-subspace bound of
+\citet{smith1977} and \citet{deutschhundal1997} transported through the
+complement duality; the bound is attained-in-order for $G = 2$ but is
+conservative for $G \ge 3$ (Table~\ref{tab:sim2g3}), which is precisely
+why (ii), not an angle formula, is the right object to compute.  The
+sharp one-sweep \emph{energy-norm} contraction for general $G$ is
+characterized abstractly by the identity of \citet{xu2002} for
+multiplicative subspace-correction methods---the demeaning sweep is
+exactly such a method---but that identity's constant is itself a
+variational quantity no easier than (ii), reinforcing the same
+conclusion.  Third, the identification equivalence in (ii) generalizes
+the connectedness criterion of \citet{abowd1999} and \citet{gaure2013}:
+for $G \ge 3$, pairwise connectedness of all factor pairs is necessary
+but not sufficient for $\rho_{\mathrm{GS}} < 1$ on the quotient; the
+spectral condition is exactly right, and the power iteration returns
+$\rho_{\mathrm{GS}} = 1$ (to tolerance) when identification fails,
+making it a cheap diagnostic as well as a rate predictor.
 
 \subsection{Separation}\label{sec:separation}
 
@@ -976,7 +1123,13 @@ pair: the profile score is \emph{exactly} the conditional score, hence
 exactly unbiased for every $J$ and $m$; the incidental-parameter bias
 that plagues, e.g., the fixed-effects logit (where conditional ML exists
 but differs from profile ML, and profile ML has $O(1/m)$ bias
-\citep{andersen1970,fernandezval2016}) is identically zero here.  This is
+\citep{andersen1970,fernandezval2016}) is identically zero here.
+Section~\ref{sec:sim-logit} exhibits the logit failure mode and its
+conditional-likelihood repair quantitatively, and
+Section~\ref{sec:families} discusses how both the conditional
+likelihood \citep{chamberlain1980} and the analytic bias corrections of
+\citet{hahn2004} and \citet{fernandezval2016} slot into the
+cell-collapsed computational structure.  This is
 the likelihood-theoretic content of the folklore that ``Poisson FE is
 immune to the incidental-parameters problem''
 \citep{lancaster2000,wooldridge1999}, sharpened to a $J/N \to c$ limit
@@ -1006,17 +1159,34 @@ $\mu_i = (1+e^{-\eta_i})^{-1}$ and $\omega_i = \mu_i(1-\mu_i)$: the tilt
 weights each within-cell observation by its Bernoulli variance, so the
 tilted measure concentrates on observations near the decision boundary.
 All of Theorem~\ref{thm:tilted}, Corollary~\ref{cor:complexity}, and
-Theorems~\ref{thm:global}--\ref{thm:rate} apply verbatim (the logit link
-is canonical).  Unlike the Poisson case the tilt depends on $\bdelta$
-through $\omega_i$, so the within-cell moments must be re-accumulated
-each iteration---which the single pass does anyway.  The proportional-regime
-theory of Section~\ref{sec:proportional} does \emph{not} transfer:
-profiling and conditioning differ for the logit, conditional ML requires
-the permanent-type sums of \citet{andersen1970}, and profile ML carries
-$O(1/m)$ incidental-parameter bias \citep{fernandezval2016}; the honest
-options at $J/N \to c$ are conditional ML (computable but heavier) or
-bias correction, and we view the integration of either into the
-tilted-moment pass as valuable future work.
+Theorems~\ref{thm:global}--\ref{thm:multiG} apply verbatim (the logit
+link is canonical).  Unlike the Poisson case the tilt depends on
+$\bdelta$ through $\omega_i$, so the within-cell moments must be
+re-accumulated each iteration---which the single pass does anyway.  The
+proportional-regime theory of Section~\ref{sec:proportional} does
+\emph{not} transfer: profiling and conditioning differ for the logit,
+and profile ML carries $O(1/m)$ incidental-parameter bias---for matched
+pairs ($m = 2$) the classical limit is $2\gamma_0$
+\citep{andersen1970}---which Section~\ref{sec:sim-logit} reproduces
+numerically.  Two repairs are compatible with the cell-collapsed
+computational structure.  \emph{Conditional ML}
+\citep{chamberlain1980}: conditioning on cell totals gives per-cell
+denominators that are elementary symmetric functions of
+$\{e^{\bgamma'\bx_{ij}}\}_{i \in j}$; these obey the standard
+Newton--Girard recursion and are computable in $O(m_j D_j)$ operations
+per cell---polynomial, not combinatorial---so for the bounded cell sizes
+of the proportional regime the conditional score and information are one
+more $O(N)$ cell pass (the reference implementation includes an exact
+conditional logit along these lines, used in
+Section~\ref{sec:sim-logit}).  \emph{Analytic bias correction}
+\citep{hahn2004,fernandezval2016}: the correction terms are averages of
+within-cell weighted moments of $(\mu_i, \omega_i,
+\partial\omega_i/\partial\eta)$ and leverage-type quantities, all of
+which are cell-decomposable in exactly the sense of
+Theorem~\ref{thm:tilted} and Proposition~\ref{prop:firth}; there is no
+computational barrier to evaluating them inside the tilted pass, and we
+view a packaged implementation as worthwhile software work rather than
+an open methodological problem.
 
 \emph{Gamma regression with log link.}  Here the log link is not
 canonical, Proposition~\ref{prop:noncanonical} applies, and the Fisher
@@ -1090,6 +1260,23 @@ Thus the statistically principled response to separation costs
 essentially nothing beyond the unpenalized fit, removing the last reason
 to respond to separation by ad hoc data deletion.
 Section~\ref{sec:sim-separation} quantifies the finite-sample behavior.
+
+A clarification on software behavior is in order.  Both implementations
+detect and drop separated \emph{absorbed} groups automatically before
+estimation (Section~\ref{sec:separation}).  Neither switches to the
+Firth estimator automatically: separation induced by the $\bbeta$-block
+surfaces as flagged non-convergence (the Stata command sets
+\texttt{e(converged)} $= 0$; the reference implementation returns
+\texttt{converged=False}), and the Firth fit must be requested
+explicitly (\texttt{firth=True} in the reference implementation; the
+Stata command currently reports the diagnosis and does not expose a
+Firth option).  The non-switching is deliberate: the Firth estimator is
+a different estimand-defining penalty, not a numerical fallback, and
+silently substituting it would change reported quantities without the
+user's knowledge.  A principled automatic \emph{detector}---running the
+linear-programming certificate of \citet{correia2019} on the cell
+aggregates, at $O(J)$ rather than $O(N)$ scale---is a natural software
+addition that the tilted representation makes cheap.
 
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
 
@@ -1165,6 +1352,30 @@ $1.6$\,GB design matrix where the tilted pass needs the $p$ continuous
 columns only; at the dimensions of Section~\ref{sec:application} the
 dense fit is not slow but impossible.
 
+The gap between measured and FLOP ratios merits a constructive comment,
+since closing it is an implementation exercise with a known playbook.
+The tilted pass streams $O(Np)$ numbers and performs $O(Np^2)$ flops, so
+for small $p$ its arithmetic intensity is low and the memory bus, not
+the ALU, sets the speed; the dense baseline, by contrast, is a BLAS-3
+Gram update running near peak.  Three standard remedies raise the tilted
+pass toward bandwidth saturation and beyond: (i) \emph{cache locality}:
+storing the microdata sorted by cell converts the binned accumulations
+into contiguous segmented sums, so each cell's partial moments stay in
+registers/L1 and the pass touches each cache line once (this is how the
+Mata implementation in \texttt{stpois} organizes the sweep, following
+\citealp{correia2016}); (ii) \emph{fusion}: the weight evaluation,
+residual, binned sums, and Gram update share one loop, so the data are
+read once per iteration rather than once per moment; and (iii)
+\emph{parallelism}: cells are independent, so the pass shards trivially
+across threads with per-thread partial moments and a $J k$-sized
+reduction, with no atomics on the hot path---the same structure GPU
+segmented-reduction primitives expect.  The single-threaded NumPy
+reference implementation uses none of (i)--(iii) beyond what
+\texttt{bincount} provides, so the reported $12\times$--$117\times$
+should be read as a floor; the FLOP ratio governs how the comparison
+scales with $(p, k)$, and the bandwidth analysis governs the attainable
+constant.
+
 \subsection{Convergence rates of alternating projections}
 \label{sec:sim-rate}
 
@@ -1209,6 +1420,49 @@ iterating (a sparse SVD of the $100 \times 80$ weighted cross-tabulation)
 and could be used to warn users, select orderings, or switch to
 conjugate-gradient acceleration when the gap is small
 \citep{gaure2013,correia2016}.
+
+The second panel of the study probes Theorem~\ref{thm:multiG} with
+$G = 3$ factors ($J_1, J_2, J_3 = 100, 80, 60$; factor 2 tied to factor
+1 and factor 3 to factor 2, each with probability $\rho$).  For each
+$\rho$ we compute the exact level-space spectral rate of
+Theorem~\ref{thm:multiG}(ii) (function \texttt{gs\_spectral\_rate},
+an eigencomputation on $240$ levels), the Friedrichs product certificate
+of Theorem~\ref{thm:multiG}(iii), and the empirical per-sweep
+contraction of the three-factor demeaning.
+
+\begin{table}[t]
+\centering
+\caption{Study 2, $G = 3$ absorbed factors: exact spectral rate of
+Theorem~\ref{thm:multiG}(ii) versus empirical per-sweep contraction,
+with the product-of-sines norm certificate of
+Theorem~\ref{thm:multiG}(iii).}
+\label{tab:sim2g3}
+\small
+\begin{tabular}{ccccc}
+\toprule
+$\rho$ & Exact $\rho_{\mathrm{GS}}$ & Empirical rate & Norm bound &
+Sweeps \\
+\midrule
+0.00 & 0.0066 & 0.0064 & 0.0766 & 7 \\
+0.30 & 0.2520 & 0.2524 & 0.6218 & 23 \\
+0.60 & 0.5293 & 0.5317 & 0.8788 & 46 \\
+0.80 & 0.7907 & 0.7890 & 0.9763 & 113 \\
+0.90 & 0.8802 & 0.8837 & 0.9928 & 225 \\
+0.95 & 0.9548 & 0.9552 & 0.9989 & 569 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:sim2g3} confirms the two halves of the theorem exactly
+as designed: the spectral rate matches the observed contraction to the
+third decimal at every $\rho$---the $G = 2$ precision carries over to
+$G = 3$ unchanged---while the a priori norm bound is valid everywhere
+but conservative, overstating the rate substantially in the
+well-conditioned regimes.  The practical protocol this supports: use the
+product certificate (computable from angles factor-by-factor) for a
+quick feasibility screen, and the $O(\sum J_g)$-dimensional spectral
+computation for the exact rate and for the identification diagnostic of
+Theorem~\ref{thm:multiG}(ii).
 
 \subsection{The proportional regime}\label{sec:sim-highdim}
 
@@ -1297,6 +1551,56 @@ requires.  The cost of the adjustment was a factor $\sim\!2$ per
 iteration (the extra unadjusted pass for current-iterate leverages),
 consistent with Proposition~\ref{prop:firth}.
 
+\subsection{The logit failure mode and its conditional repair}
+\label{sec:sim-logit}
+
+Study 5 quantifies the boundary drawn in
+Sections~\ref{sec:proportional} and~\ref{sec:families}: in the
+proportional regime the Poisson profile MLE is exactly unbiased
+(Theorem~\ref{thm:proportional}, Study 3), but the logit profile MLE is
+not.  Cells of size $m \in \{2, 4, 8\}$, one logit fixed effect per
+cell, $\alpha_j \sim \mathcal{N}(0,1)$, a single covariate with
+$\gamma_0 = 1$, $N = 8{,}000$, $500$ replications; uninformative cells
+(all events or all non-events) are dropped, as both estimators require.
+We compare the profile MLE (inner concentration of the cell effects by
+vectorized Newton, outer Schur-complement steps---the logit analogue of
+\texttt{profile\_poisson}) with the exact conditional MLE of
+\citet{chamberlain1980}, computed cellwise as described in
+Section~\ref{sec:families}.
+
+\begin{table}[t]
+\centering
+\caption{Study 5: incidental-parameter bias of the logit profile MLE at
+$J/N = 1/m$ versus the conditional MLE; true $\gamma_0 = 1$; $500$
+replications.  The $m = 2$ profile mean approaches Andersen's classical
+$2\gamma_0$ limit.}
+\label{tab:sim5}
+\small
+\begin{tabular}{rccccc}
+\toprule
+$m$ & $J/N$ & Mean $\hat\gamma^{\mathrm{profile}}$ &
+Bias$^{\mathrm{profile}}$ & Mean $\hat\gamma^{\mathrm{cond}}$ &
+Bias$^{\mathrm{cond}}$ \\
+\midrule
+2 & 0.50  & 1.869 & $+0.869$ & 1.000 & $-0.000$ \\
+4 & 0.25  & 1.403 & $+0.403$ & 0.998 & $-0.002$ \\
+8 & 0.125 & 1.165 & $+0.165$ & 0.998 & $-0.002$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:sim5} displays the textbook pathology at full strength:
+the profile bias is $87\%$ of the parameter at $m = 2$ (approaching the
+$2\gamma_0$ limit of \citealp{andersen1970}) and decays at the
+predicted $O(1/m)$, while the conditional estimator is unbiased to the
+third decimal at every $m$ \emph{at the same cell-collapsed
+computational cost}.  Read together with Study 3, the two tables make
+the paper's asymptotic message concrete: the proportional regime is not
+generically safe (logit) nor generically fatal (Poisson); it is the
+profile--conditional coincidence, an algebraic property of the family,
+that decides---and when the coincidence fails, the conditional
+likelihood is the drop-in repair within the same framework.
+
 % =========================================================================
 \section{Register-scale case study}\label{sec:application}
 % =========================================================================
@@ -1359,27 +1663,41 @@ This paper reframed two computational folk devices---cell collapse and
 fixed-effect absorption---as a single exact framework and supplied the
 theory that practice has been running ahead of: an algebraic
 identity (Theorem~\ref{thm:tilted}) that makes Newton on the full
-likelihood a cell-level computation; global convergence and sharp local
-rates for the nonlinear Gauss--Seidel absorption cycle
-(Theorems~\ref{thm:global}--\ref{thm:rate}), with the rate identified as
-a bipartite spectral gap computable before iterating
-(Corollary~\ref{cor:bipartite}); and asymptotics that cover the
+likelihood a cell-level computation; global convergence of the nonlinear
+Gauss--Seidel absorption cycle for canonical and, more generally,
+log-concave links (Theorem~\ref{thm:global}); sharp local rates---the
+bipartite spectral gap for two factors
+(Theorem~\ref{thm:rate}, Corollary~\ref{cor:bipartite}) and, for any
+number of factors, an exact spectral characterization computable from
+pairwise cross-tabulations before iterating, with an angle-based
+certificate (Theorem~\ref{thm:multiG}); and asymptotics that cover the
 dimensionalities register data actually present, including the
 proportional regime $J/N \to c$ where the Poisson profile likelihood's
 coincidence with a conditional likelihood delivers unbiased,
 efficiently-normal, cluster-robust inference
-(Theorem~\ref{thm:proportional}).
+(Theorem~\ref{thm:proportional}), and where the logit's failure of that
+coincidence is repaired by the conditional likelihood at the same
+cell-collapsed cost (Section~\ref{sec:sim-logit}).
 
 Several limitations delineate future work.  First, the
-proportional-regime theory is Poisson-specific; for the logit the
-conditional likelihood exists but is not the profile likelihood, and
-integrating conditional-ML or analytic bias corrections
-\citep{fernandezval2016} into the tilted pass is open.  Second,
-Theorem~\ref{thm:rate} characterizes the local rate for $G = 2$
-absorbed factors exactly; for $G \ge 3$ the block Gauss--Seidel radius
-bound is available but the clean angle characterization is not, matching
-the state of the linear alternating-projections literature
-\citep{deutsch2001}.  Third, our separation handling is exact for the
+proportional-regime \emph{theory} is Poisson-specific; for the logit we
+have shown that the exact conditional likelihood is computable within
+the same cell-collapsed structure (Sections~\ref{sec:families}
+and~\ref{sec:sim-logit}) and that the analytic bias corrections of
+\citet{hahn2004} and \citet{fernandezval2016} are cell-decomposable,
+but a limit theorem with variance theory for the conditional logit at
+$J/N \to c$, parallel to Theorem~\ref{thm:proportional}, remains to be
+written down (the classical fixed-$m$ arguments of
+\citealp{andersen1970} should extend along the lines of
+Appendix~\ref{app:classical}).  Second, Theorem~\ref{thm:multiG}
+settles the $G \ge 3$ rate question in computable form---the exact rate
+is the spectral radius of a level-space sweep operator determined by
+pairwise cross-tabulations, with the product-of-sines certificate as an
+a priori bound---but a closed-form expression in terms of a single
+generalized angle is not available and is likely not to exist, matching
+the state of the multi-subspace alternating-projections literature
+\citep{badea2012}; sharpening the certificate toward the exact rate is
+an interesting problem.  Third, our separation handling is exact for the
 absorbed blocks and delegated to Firth for the rest; a full polyhedral
 detection in the sense of \citet{correia2019}, run on cell aggregates,
 would be a useful complement.  Fourth, the asymptotic regimes here treat
@@ -1606,7 +1924,24 @@ because the argument used only: exactness/uniqueness of the absorbed
 block maximizations, sufficient ascent of the $\bbeta$-step, and
 vanishing per-block increments---all invariant to replacing the
 $\bbeta$-step by exact maximization and to essentially-cyclic orderings
-(every block updated at least once every $B$ iterations). \qed
+(every block updated at least once every $B$ iterations).
+
+For part (iv), inspect where Assumption~\ref{ass:canonical} entered:
+(a) concavity of $\ell$ on $\R^D$ and strict concavity on $E$ used only
+that each per-observation contribution $\eta \mapsto \ell_i(\eta)$ is
+(strictly) concave, which is the log-concave-link hypothesis; (b) the
+absorbed block subproblems are separable sums of strictly concave
+scalar functions, so unique finite maximizers exist under the analogue
+of Assumption~\ref{ass:blocks}(i) (for the gamma--log family every
+group maximizer is finite whenever the group is nonempty, since
+$y_i > 0$ a.s.); and (c) the sufficient-ascent argument for the
+$\bbeta$-step used only that the step direction is
+$\mathbf{d} = \mathbf{P}^{-1}\bU_{\bbeta}$ for a symmetric
+preconditioner $\mathbf{P}$ with eigenvalues in $[\underline\lambda,
+\bar\lambda]$, giving $\bU_{\bbeta}'\mathbf{d} \ge
+\|\bU_{\bbeta}\|^2/\bar\lambda$---satisfied by the expected
+information of Fisher scoring under
+Assumption~\ref{ass:blocks}(ii). \qed
 
 \subsection{Proof of Theorem~\ref{thm:rate}}
 
@@ -1674,6 +2009,99 @@ multiplicity of $\sigma = 1$ equals the number of connected components,
 so $\sigma_2 < 1$ iff the graph is connected, which is also exactly the
 condition $V_1 \cap V_2 = \operatorname{span}\{\mathbf{1}\}$
 \citep{abowd1999,gaure2013}. \qed
+
+\subsection{Proof of Theorem~\ref{thm:multiG}}
+
+\emph{(i)}  Within one factor the indicator columns have disjoint
+supports, so $\mathbf{A}_g'\Omega^\ast\mathbf{A}_g = \bD_g$ (diagonal);
+for $g \ne h$, $\mathbf{A}_g'\Omega^\ast\mathbf{A}_h = \bB_{gh}$ by
+definition.  Theorem~\ref{thm:rate}(i) identifies the local rate with
+$\rho$ of the block Gauss--Seidel operator of $\mathcal{F}$, which is a
+function of these blocks only.
+
+\emph{(ii)}  \emph{Eigenspace of $1$.}  $\mathbf{M}v = v \iff
+-\mathcal{L}'v = (\mathcal{D} + \mathcal{L})v \iff \mathcal{F}v =
+\bzero$, so the fixed points of the sweep are exactly the null vectors
+of $\mathcal{F}$; for connected designs these are the $G - 1$
+between-factor shift directions, and in general the flats of the
+identification quotient.  \emph{Semisimplicity.}  Suppose the eigenvalue
+$1$ had a nontrivial Jordan block: then there is $v$ with
+$(\mathbf{M} - \bI)v = f$ for some $f \in
+\operatorname{null}(\mathcal{F}) \setminus \{\bzero\}$.  Since
+$\mathbf{M} - \bI = -(\mathcal{D} + \mathcal{L})^{-1}\mathcal{F}$, this
+reads $\mathcal{F}v = -(\mathcal{D} + \mathcal{L})f$.  Multiply on the
+left by $f'$: the left side is $f'\mathcal{F}v = (\mathcal{F}f)'v = 0$.
+For the right side, $\mathcal{F}f = \bzero$ gives
+$(\mathcal{D} + \mathcal{L})f = -\mathcal{L}'f$, hence
+$f'\mathcal{D}f + 2f'\mathcal{L}f = f'\mathcal{F}f = 0$, i.e.\
+$f'\mathcal{L}f = -\tfrac12 f'\mathcal{D}f$, and therefore
+$f'(\mathcal{D} + \mathcal{L})f = \tfrac12 f'\mathcal{D}f > 0$ because
+$\mathcal{D}$ is positive definite (every level carries positive
+weight) and $f \ne \bzero$.  The two sides disagree---contradiction; so
+the eigenvalue $1$ is semisimple and $\R^{\sum J_g} =
+\operatorname{null}(\mathcal{F}) \oplus W$ with $W$ an
+$\mathbf{M}$-invariant complement on which
+$\rho(\mathbf{M}|_W) = \rho_{\mathrm{GS}} < 1$ by
+Theorem~\ref{thm:rate}(i) (this is the semiconvergence of Gauss--Seidel
+for consistent singular symmetric positive semidefinite systems; cf.\
+\citealp{keller1965,berman1994}).  \emph{Differences.}  Decomposing an
+arbitrary start $e_0 = f_0 + w_0$, the iterates are $e_t = f_0 +
+\mathbf{M}^t w_0$, so $e_{t+1} - e_t = (\mathbf{M} -
+\bI)\mathbf{M}^t w_0$, whose norm ratios converge to
+$\rho(\mathbf{M}|_W)$ for generic $w_0$: the fixed-point component drops
+out automatically, which is what makes plain power iteration on
+differences a valid estimator of $\rho_{\mathrm{GS}}$.
+\emph{Identification.}  $\rho_{\mathrm{GS}} < 1$ on the quotient iff
+$\mathcal{F}$ is positive definite there (Gauss--Seidel on a symmetric
+system converges iff the matrix is positive definite on the relevant
+space; \citealp[Sec.~11.2]{golub2013}), which is the definition of the
+multi-way design being identified up to the flats.  \emph{Cost.}  One
+application of $\mathbf{M}$ is one block forward-substitution: for each
+$g$ in order, a diagonal solve after accumulating
+$\sum_{h \ne g} \bB_{gh} v_h$, i.e., $O\big(\sum_{g<h}
+\operatorname{nnz}(\bB_{gh})\big)$ operations.
+
+\emph{(iii)}  Work in the $\Omega^\ast$ inner product on $\R^N$ and let
+$\varepsilon_t \in V_1 + \dots + V_G$ be the error of the fitted
+fixed-effect vector after sweep $t$.  Updating block $g$ to its exact
+blockwise maximizer replaces $\varepsilon$ by $(\bI -
+\bP_g)\varepsilon$, where $\bP_g$ is the $\Omega^\ast$-orthogonal
+projection onto $V_g$: the block update minimizes the quadratic (IRLS)
+energy over corrections in $V_g$, and the minimizer of
+$\|\varepsilon + \delta\|_{\Omega^\ast}$ over $\delta \in V_g$ is
+$\delta = -\bP_g\varepsilon$.  One sweep therefore applies
+$\mathbf{E} = (\bI - \bP_G)\cdots(\bI - \bP_1)$---the multiplicative
+subspace-correction (equivalently, cyclic alternating projections onto
+the complements $M_g = V_g^{\perp}$)---and the level-space operator
+$\mathbf{M}$ of (ii) is the matrix of
+$\mathbf{E}|_{V_1 + \dots + V_G}$ in the (redundant) level
+parametrization, so the two have the same nonzero spectrum and
+$\rho_{\mathrm{GS}} = \rho(\mathbf{E}|_{(\cap_g M_g)^{\perp} \cap (V_1 +
+\dots + V_G)}) \le \|\mathbf{E} - \bP_{\cap_g M_g}\|_{\Omega^\ast}$.
+The product bound of \citet{smith1977} (see also
+\citealp{deutschhundal1997,badea2012}) gives
+$\|\mathbf{E} - \bP_{\cap M_g}\|_{\Omega^\ast} \le \big(1 -
+\prod_{g=1}^{G-1}(1 - \tilde c_g^{\,2})\big)^{1/2}$ with $\tilde c_g =
+c\big(M_g,\, M_{g+1} \cap \dots \cap M_G\big)$; by the complement
+duality of the Friedrichs angle, $c(A, B) = c(A^{\perp}, B^{\perp})$
+\citep[Ch.~9]{deutsch2001}, and $M_{g+1} \cap \dots \cap M_G =
+(V_{g+1} + \dots + V_G)^{\perp}$, so $\tilde c_g = c_g$ as defined in
+the statement.  Each $c_g$ is the largest cosine between $V_g \ominus
+(\text{intersection})$ and the pooled span of the later factors, i.e.,
+the largest non-unit generalized singular value of the level-space
+pencil formed from $\bD_g$, the stacked cross-tabulations
+$(\bB_{g,g+1}, \dots, \bB_{g,G})$, and the pooled Gram matrix of the
+later factors---computable by a small dense or sparse eigenproblem.
+Positivity of all angles ($c_g < 1$) is equivalent to $V_g \cap
+(V_{g+1} + \dots + V_G) = \text{flats}$ for each $g$, which is
+identification.
+
+\emph{(iv)}  For $G = 2$ the sweep operator eigenvalues are those of
+$\bD_2^{-1}\bB_{21}\bD_1^{-1}\bB_{12}$ (Appendix~\ref{app:global},
+proof of Theorem~\ref{thm:rate}(ii)), whose non-unit spectrum is
+$\{\sigma_i^2\}$ of the normalized biadjacency kernel, giving
+$\rho_{\mathrm{GS}} = \sigma_2^2 = c_F^2$; the bound in (iii) has a
+single factor, $(1 - (1 - c_F^2))^{1/2} = c_F$. \qed
 
 % =========================================================================
 \section{Proofs for Section~\ref{sec:asymptotics}}\label{app:classical}

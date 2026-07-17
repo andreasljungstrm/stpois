@@ -16,7 +16,7 @@ import time
 os.makedirs("output", exist_ok=True)
 
 for script in ["sim1_validation.py", "sim2_convergence.py",
-               "sim3_highdim.py", "sim4_separation.py",
+               "sim3_highdim.py", "sim4_separation.py", "sim5_logit_bias.py",
                "app_register.py"]:
     print(f"\n===== {script} =====")
     t0 = time.perf_counter()

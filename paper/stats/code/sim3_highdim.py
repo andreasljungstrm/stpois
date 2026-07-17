@@ -4,7 +4,7 @@ Simulation study 3 (Section 6.3): the many-cells regime J/N -> c.
 Poisson model with one fixed effect per cell (absorbed / profiled out) and
 p = 2 individual-level covariates.  Cells have bounded size m, so the
 number of incidental parameters J = N/m grows proportionally with N:
-J/N = 1/m in (0, 1).  Theorem 6 states that the profile MLE gamma-hat
+J/N = 1/m in (0, 1).  Theorem 7 states that the profile MLE gamma-hat
 remains consistent and asymptotically normal (no incidental-parameter bias,
 by the coincidence of the Poisson profile likelihood with the conditional
 multinomial likelihood), and that both the profile-information and the

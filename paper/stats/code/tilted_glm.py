@@ -16,14 +16,14 @@ or non-canonical log-concave links:
                       single O(N p_c) / O(N p_c^2) pass over the microdata;
                       optional absorption of additional high-dimensional
                       fixed-effect factors by nonlinear block Gauss--Seidel
-                      (Algorithm 1 / Theorems 2-3);
+                      (Algorithm 1 / Theorems 2-4);
   * `fit_full`     -- textbook dense Newton on the full design, used to
                       verify that the tilted iterates coincide with the full
                       ones to machine precision (Section 6.1);
   * `profile_poisson` -- the concentrated (profile) Poisson likelihood for
                       one absorbed cell factor, whose score and Hessian are
                       Schur complements of tilted moments; this is the
-                      estimator studied in the J/N -> c regime (Theorem 6);
+                      estimator studied in the J/N -> c regime (Theorem 7);
   * Firth's bias-reducing adjusted score integrated into the tilted
                       accumulation (Proposition 4, Section 5.3);
   * observed-information, HC1-robust, and cluster-robust covariance
@@ -544,7 +544,7 @@ def fit_full(y, A, offset, family="poisson", tol=1e-9, maxiter=100,
 
 # ----------------------------------------------------------------------
 # Profile (concentrated) Poisson likelihood for one absorbed cell factor:
-# the estimator of the J/N -> c regime (Section 4.3 / Theorem 6)
+# the estimator of the J/N -> c regime (Section 4.3 / Theorem 7)
 # ----------------------------------------------------------------------
 
 
@@ -683,3 +683,100 @@ def flops_per_iteration(N, p, k):
     full = N * (p + k) ** 2
     tilted = N * p ** 2 + N * p + (0 if k == 0 else 0) + (p + k) ** 3 / 3
     return full, tilted
+
+
+# ----------------------------------------------------------------------
+# G >= 3 absorbed factors: exact local rate and Friedrichs product bound
+# (Theorem 4 of the paper)
+# ----------------------------------------------------------------------
+
+
+def _level_space_blocks(factors, weights):
+    """Assemble the level-space information blocks of the absorbed
+    factors: diagonal weight totals D_g and pairwise weighted
+    cross-tabulations B[g][h] (J_g x J_h).  These pairwise tables
+    determine F_alpha,alpha completely -- the basis of Theorem 4(i)."""
+    G = len(factors)
+    J = [int(f.max()) + 1 for f in factors]
+    D = [np.bincount(f, weights=weights, minlength=J[g])
+         for g, f in enumerate(factors)]
+    B = [[None] * G for _ in range(G)]
+    for g in range(G):
+        for h in range(g + 1, G):
+            Bgh = np.zeros((J[g], J[h]))
+            np.add.at(Bgh, (factors[g], factors[h]), weights)
+            B[g][h] = Bgh
+            B[h][g] = Bgh.T
+    return J, D, B
+
+
+def gs_spectral_rate(factors, weights, tol=1e-10):
+    """Exact asymptotic per-sweep rate of the nonlinear Gauss--Seidel /
+    weighted alternating projections over G >= 2 absorbed factors
+    (Theorem 4(i)): the spectral radius of the block Gauss--Seidel
+    operator of F_alpha,alpha on the quotient by its null space.
+
+    The operator lives on the level space (dimension sum_g J_g) and is
+    built solely from the pairwise weighted cross-tabulations; the flat
+    directions (shifts between factors) are exact eigenvalue-1 fixed
+    points and are removed before taking the maximum modulus.
+    """
+    G = len(factors)
+    J, D, B = _level_space_blocks(factors, weights)
+    n = sum(J)
+    off = np.cumsum([0] + J)
+    H = np.zeros((n, n))
+    for g in range(G):
+        H[off[g]:off[g + 1], off[g]:off[g + 1]] = np.diag(D[g])
+        for h in range(G):
+            if h != g:
+                H[off[g]:off[g + 1], off[h]:off[h + 1]] = B[g][h]
+    L = np.tril(H)            # D + strictly-lower blocks (D_g diagonal)
+    U = np.triu(H, 1)
+    M = -np.linalg.solve(L, U)
+    lam = np.linalg.eigvals(M)
+    # flats: eigenvalue exactly 1 with multiplicity = dim null(H)
+    lam = lam[np.abs(lam - 1.0) > 1e-8]
+    return float(np.max(np.abs(lam))) if len(lam) else 0.0
+
+
+def friedrichs_product_bound(factors, weights):
+    """A priori upper bound on the per-sweep contraction (Theorem 4(ii)):
+    the one-sweep operator norm of the demeaning cycle obeys the
+    Smith--Solmon--Wagner / Deutsch--Hundal product bound
+
+        rho_GS <= ||sweep||_Omega <= [1 - prod_{g=1}^{G-1}(1 - c_g^2)]^{1/2},
+
+    where c_g is the Friedrichs cosine between V_g and
+    V_{g+1} + ... + V_G in the Omega inner product.  Each c_g is
+    computed on the level space via a generalized Rayleigh quotient,
+    with the exact-intersection directions (eigenvalue 1) removed.
+    For G = 2 the bound returns c_F itself; the sharp asymptotic rate
+    is then c_F^2 (Kayalar--Weinert), and in general the exact rate is
+    `gs_spectral_rate`, for which this is a conservative certificate.
+    """
+    G = len(factors)
+    J, D, B = _level_space_blocks(factors, weights)
+    bound_complement = 1.0
+    for g in range(G - 1):
+        rest = list(range(g + 1, G))
+        nR = sum(J[h] for h in rest)
+        offR = np.cumsum([0] + [J[h] for h in rest])
+        HR = np.zeros((nR, nR))
+        BgR = np.zeros((J[g], nR))
+        for a, h in enumerate(rest):
+            HR[offR[a]:offR[a + 1], offR[a]:offR[a + 1]] = np.diag(D[h])
+            BgR[:, offR[a]:offR[a + 1]] = B[g][h]
+            for b, k in enumerate(rest):
+                if k != h:
+                    HR[offR[a]:offR[a + 1], offR[b]:offR[b + 1]] = B[h][k]
+        dg = np.sqrt(D[g])
+        K = (BgR / dg[:, None]).T
+        K = np.linalg.pinv(HR, rcond=1e-12) @ K
+        K = (BgR / dg[:, None]) @ K          # D^-1/2 B H_R^+ B' D^-1/2
+        ev = np.linalg.eigvalsh((K + K.T) / 2)
+        ev = ev[ev < 1.0 - 1e-8]             # remove exact intersections
+        cg2 = float(np.max(ev)) if len(ev) else 0.0
+        cg2 = min(max(cg2, 0.0), 1.0)
+        bound_complement *= (1.0 - cg2)
+    return float(np.sqrt(1.0 - bound_complement))
