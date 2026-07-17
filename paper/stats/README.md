@@ -2,8 +2,8 @@
 
 This directory contains the manuscript
 
-> **Exact Estimation of Exponential Family Models on Massive Mixed
-> Categorical–Continuous Data via Tilted Cell Moments**
+> **Tilted Cell Moments: A One-Pass Exact Newton Method for
+> Generalized Linear Models at Scale**
 
 targeted at a computational statistics journal (JCGS-style), together
 with its **online supplement**.  It is the theoretical/methodological
@@ -12,8 +12,8 @@ companion to the `stpois` software article in `paper/sj/` and
 
 ## Structure
 
-**Main paper (`main.tex` → `main.pdf`, ~19 pp.)** — one computational
-idea developed end to end:
+**Main paper (`main.tex` → `main.pdf`, ~29 pp.)** — a universal GLM
+solver developed end to end, with HDFE absorption as its stress test:
 
 1. *Proposition 1.* Ordinary cell collapse fails with continuous
    covariates: evaluating the likelihood function requires the entire

@@ -2,8 +2,8 @@
 
 Reference implementation and numerical studies for the manuscript
 
-> *Exact Estimation of Exponential Family Models on Massive Mixed
-> Categorical–Continuous Data via Tilted Cell Moments*
+> *Tilted Cell Moments: A One-Pass Exact Newton Method for
+> Generalized Linear Models at Scale*
 
 and its online supplement.  Everything is plain Python; the core
 requires only `numpy` and `scipy`.  The competitor benchmarks additionally

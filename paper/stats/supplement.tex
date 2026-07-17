@@ -83,9 +83,8 @@
 \renewcommand{\thesection}{S\arabic{section}}
 \renewcommand{\thealgorithm}{S\arabic{algorithm}}
 
-\title{Online Supplement to ``Exact Estimation of Exponential Family
-Models on Massive Mixed Categorical--Continuous Data via Tilted Cell
-Moments''}
+\title{Online Supplement to ``Tilted Cell Moments: A One-Pass Exact
+Newton Method for Generalized Linear Models at Scale''}
 
 \author{Andreas Ljungstr\"om\\
 \small Swedish Institute for Social Research, Stockholm University}
@@ -196,12 +195,22 @@ absorbed groups with no events (Section~\ref{sec:separation}).
 
 Algorithm~\ref{alg:absorb} is, up to the tilted-moment acceleration of
 the $\bbeta$-step, the algorithm used across the applied HDFE--GLM
-software ecosystem, and it is the algorithm for which the literature
-records no convergence guarantee: \citet{correia2020} prove convergence
-of the \emph{linear} inner solves they employ, \citet{berge2018} and the
-\texttt{stpois} software article report empirical convergence of the
-nonlinear cycle, and \citet{gaure2013} analyzes the linear case.  The
-next two subsections close this gap.
+software ecosystem.  Its convergence status splits cleanly in two.  The
+\emph{inner} loop is the method of alternating projections, whose
+convergence is classical---von Neumann for two subspaces, generalized
+by \citet{halperin1962}, with the Kaczmarz sweep \citep{kaczmarz1937}
+as the coordinate case---and which \citet{gaure2013} introduced into
+fixed-effects estimation on exactly this foundation;
+\citet{correia2020} prove convergence of the linear inner solves they
+employ, and \citet{deutschhundal1997} supply rates.  For the
+\emph{combined} nonlinear cycle---profile updates of the absorbed
+effects alternated with Newton/scoring steps on the GLM
+likelihood---the literature offers simulation evidence
+\citep{guimaraes2010,berge2018,correia2020} but no unified formal
+theorem.  The next two subsections supply that missing statement:
+Theorem~\ref{thm:global} (main-paper Theorem~2) proves global
+convergence of the combined inner--outer iteration, and
+Theorems~\ref{thm:rate}--\ref{thm:multiG} characterize its rate.
 
 \subsection{Global convergence}\label{sec:global}
 

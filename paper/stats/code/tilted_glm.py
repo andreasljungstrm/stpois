@@ -3,8 +3,8 @@ tilted_glm.py -- Reference implementation of the tilted-cell-moment framework.
 
 Accompanies the manuscript
 
-    "Exact Estimation of Exponential Family Models on Massive Mixed
-     Categorical-Continuous Data via Tilted Cell Moments"
+    "Tilted Cell Moments: A One-Pass Exact Newton Method for
+     Generalized Linear Models at Scale"
 
 and its online supplement (absorption convergence theory, rates,
 high-dimensional asymptotics, Firth/penalized/conditional extensions).

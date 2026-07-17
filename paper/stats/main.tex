@@ -70,18 +70,18 @@
 \newcommand{\bP}{\mathbf{P}}
 \newcommand{\bzero}{\mathbf{0}}
 
-\title{Exact Estimation of Exponential Family Models on Massive
-Mixed Categorical--Continuous Data via Tilted Cell Moments}
+\title{Tilted Cell Moments: A One-Pass Exact Newton Method for
+Generalized Linear Models at Scale}
 
 \author{Andreas Ljungstr\"om\thanks{Swedish Institute for Social Research
 (SOFI), Stockholm University, SE-106 91 Stockholm, Sweden.
-E-mail: \texttt{andreas.ljungstrom@sofi.su.se}.  Reproduction code for all
-numerical results is available at
-\url{https://github.com/andreasljungstrm/stpois} (directory
-\texttt{paper/stats/code}).  An online supplement contains the companion
-theory (convergence of nonlinear fixed-effect absorption and its rates,
-high-dimensional asymptotics, Firth and penalized extensions) and its
-proofs and simulations.}\\
+E-mail: \texttt{andreas.ljungstrom@sofi.su.se}.  The open-source
+reference implementation and scripts reproducing every numerical result
+are available at \url{https://github.com/andreasljungstrm/stpois}
+(directory \texttt{paper/stats/code}).  An online supplement contains
+companion theory (convergence and rates for nonlinear fixed-effect
+absorption, high-dimensional asymptotics, Firth and penalized
+extensions) with proofs and simulations.}\\
 \small Swedish Institute for Social Research, Stockholm University}
 
 \date{July 2026}
@@ -92,53 +92,51 @@ proofs and simulations.}\\
 
 \begin{abstract}
 \noindent
-When every covariate of a generalized linear model is categorical, the
-log likelihood collapses onto within-cell aggregates of the
-cross-classification, and estimation on the $J$ cells reproduces the
-microdata maximum-likelihood estimator at a fraction of the cost.  A
-a single continuous covariate breaks it: we show that a
-fixed-dimensional cell summary can no longer reproduce the likelihood
-\emph{function}, because doing so would require the entire within-cell
-empirical distribution of the continuous covariates.  The contribution of
-this paper is a distinction between likelihood exactness, which is
-impossible, and \emph{score} exactness, which is not: a Newton or
-Fisher-scoring step needs only the gradient and curvature at the current
-iterate, and for exponential dispersion families these are, exactly,
-linear combinations of three low-order moments of an \emph{exponentially
-tilted} within-cell measure---for the Poisson family, an Esscher
-transform of the within-cell exposure measure---that one pass computes.
-Consequently every Newton or Fisher-scoring iteration is computable from
-one streaming pass over the microdata at $O(Np_c^2)$ cost, with $p_c$
-the number of continuous covariates only, followed by algebra on the
-cells; the resulting iterates coincide with full-design Newton up to
-floating-point reordering, so the method is exact rather than an
-approximation.  We give the streaming algorithm, its complexity, memory,
-and numerical-stability properties, and exact cell-accumulated robust and
-cluster-robust covariance estimators.  Experiments confirm agreement with
-dense Newton to $10^{-13}$--$10^{-15}$ across Poisson, logistic, and gamma
-models, and benchmark against the implementations practitioners use:
-one to two orders of magnitude faster and $12$--$50\times$ lighter in
-memory than \texttt{statsmodels}, faster than \texttt{glum} and a
-sparse-design IRLS, and---for absorbed high-dimensional fixed effects---%
-about twice as fast and several times lighter than \texttt{pyfixest}
-while returning the exact estimate, with $O(N)$ time and memory verified
-to $5\times10^7$ records and accuracy preserved across a battery of
-ill-conditioned designs.  Two applications on public and register-scale
-data---a logistic on-time model for the $336{,}776$ flights of
-\texttt{nycflights13}, agreeing with \texttt{pyfixest} to $10^{-9}$ once
-$3{,}692$ aircraft are absorbed, and a five-million-episode epidemiology
-study with $10{,}000$ absorbed municipality--year effects---fit with
-inference in seconds.  An online supplement develops
-companion theory: global convergence and sharp local rates for the
-nonlinear alternating-projections absorption of high-dimensional fixed
-effects, asymptotics up to the proportional regime $J/N \to c$, and
-Firth, penalized, and conditional-likelihood extensions.
+Newton and Fisher-scoring estimation of a generalized linear model
+requires, at every iteration, the score vector and the information
+matrix of the full $N \times (p + k)$ design.  When $N$ is in the
+tens of millions and the design mixes $k$ dummy-coded categorical
+columns with $p$ continuous columns, the $O(N(p+k)^2)$ per-iteration
+cost and the memory of the design matrix itself become the binding
+constraints, and the standard responses---subsampling, sketching,
+sparse storage---either abandon exactness or retain an $O(N)$ factor
+on the full column dimension.  This paper establishes an exact
+algebraic alternative.  For any exponential dispersion family we prove
+a \emph{tilted-moment identity}: the score and information at an
+arbitrary parameter value are linear combinations of three low-order
+moments of an exponentially tilted measure on the cells of the
+categorical cross-classification, computable in a single streaming pass
+whose cost involves only the continuous columns.  The per-iteration
+complexity falls from $O(N(p+k)^2)$ to $O(N(p^2+p+1)) + O(J(k^2+kp))$
+for $J$ cells, no design matrix is ever formed, and the resulting
+iterates coincide with dense Newton to floating-point reordering
+($10^{-13}$--$10^{-15}$ in experiments across Poisson, logistic, and
+gamma models): the method is exact, not an approximate-gradient
+scheme.  We derive the identity, characterize precisely why no fixed
+cell summary can support the likelihood function itself
+(a Laplace-transform uniqueness argument covering the Poisson and
+Bernoulli families), give the streaming algorithm with its
+numerical-stability envelope (log-domain kernels, backtracking,
+rank-deficiency and separation handling) and exact cell-accumulated
+sandwich and cluster-robust covariance estimators, and benchmark a
+reference implementation against dense Newton, sparse-design IRLS, and
+production solvers: one to two orders of magnitude faster and
+$12$--$50\times$ lighter in memory than \texttt{statsmodels}, faster
+than \texttt{glum} and sparse IRLS, with $O(N)$ time and memory
+verified to $5 \times 10^7$ observations and accuracy preserved at
+information-matrix condition numbers up to $10^{17}$.  As a stress
+test, the engine composes with high-dimensional fixed-effect
+absorption---profile updates of absorbed factors alternated with
+tilted-moment Newton steps---for which we supply a unified global
+convergence proof; on public data with $3{,}692$ absorbed fixed
+effects the composition reproduces \texttt{pyfixest} to $10^{-9}$ at
+lower cost.
 \end{abstract}
 
 \medskip
-\noindent\textbf{Keywords:} generalized linear models; exponential
-tilting; sufficient statistics; streaming algorithms; high-dimensional
-fixed effects; register data.
+\noindent\textbf{Keywords:} generalized linear models; Newton--Raphson;
+Fisher scoring; exponential tilting; streaming algorithms;
+computational complexity; high-dimensional fixed effects.
 
 \newpage
 
@@ -146,177 +144,179 @@ fixed effects; register data.
 \section{Introduction}\label{sec:intro}
 % =========================================================================
 
-A large share of applied statistical work now takes place on data sets
-whose size is set not by a sampling budget but by an administrative
-process: full-population registers, insurance claim files, electronic
-health records, transportation and digital trace data.  The models
-fitted to such data are rarely exotic---Poisson regression for event
-rates, logistic regression for binary outcomes, gamma regression for
-costs---but their covariate structure has a characteristic shape.  A
-small number of continuous covariates of scientific interest (income,
-exposure, a polygenic score) appear alongside a rich categorical
-apparatus: demographic strata such as age band $\times$ sex $\times$
-education, operational strata such as carrier $\times$ route $\times$
-month, and often fixed-effect factors with thousands of levels.  The
-cross-classification of the categorical covariates partitions the $N$
-observations into $J$ cells, and it is the interplay between $N$, $J$,
-and the continuous covariates that determines whether
-maximum-likelihood estimation is an interactive computation or an
-overnight batch job.
+Maximum-likelihood estimation of a generalized linear model
+\citep{nelder1972,mccullagh1989} proceeds by Newton--Raphson or Fisher
+scoring: at each iteration, form the score vector and the information
+matrix of the current iterate and solve a $q$-dimensional linear
+system, $q = p + k$ the number of coefficients.  With the design held
+as an $N \times q$ matrix, each iteration costs $O(Nq^2)$ floating-point
+operations for the weighted Gram product, and the design itself
+occupies $Nq$ doubles.  Neither term is problematic at textbook scale.
+Both become binding when $N$ reaches $10^7$--$10^8$ and the design has
+the composition typical of administrative, clinical, and operational
+data: a small number $p$ of continuous covariates alongside a rich
+categorical apparatus---strata, batches, regions, periods, and their
+interactions---whose dummy coding contributes $k \gg p$ columns.  A
+design of $5 \times 10^7$ rows and $500$ dummy columns occupies
+$200$\,GB before the first iteration; the Gram product touches all of
+it, every iteration.  This is the bottleneck the present paper removes.
 
-Two classical observations frame the problem.  First, when \emph{every}
-covariate is categorical, the exponential-family log likelihood depends
-on the data only through within-cell aggregates; estimation on the $J$
-collapsed cells reproduces the microdata maximum-likelihood estimator
-(MLE) exactly, and the per-iteration cost drops from $O(Nq^2)$ to
-$O(Jq^2)$ for $q$ parameters.  This is the standard device behind
-register-based rate modeling in epidemiology and demography
-\citep{holford1980,laird1981,clayton1993}.  Second, the collapse is
-fragile: a single continuous covariate destroys it, because the cumulant
-function of the family is strictly convex, so cell sums of nonlinear
-transforms of the linear predictor cannot be recovered from cell means.
-Analysts then face an unattractive choice between discretizing the
-continuous covariates---introducing bias that is hard to quantify---and
-abandoning the cell structure entirely, paying the full $O(Nq^2)$ price
-per iteration even though most of the $q$ parameters are attached to
-covariates that are constant within cells.  General-purpose GLM
-software pays this price by default; software for high-dimensional
-fixed effects \citep{guimaraes2010,gaure2013,correia2020,berge2018,
-stammann2018} removes \emph{dummy-coded factors} from the design by
-demeaning, but continuous-by-cell interplay of the kind above is not a
-demeaning problem, and the cell structure of the categorical part goes
-unexploited.
+The removal is algebraic, not approximate.  Let the categorical
+covariates partition the observations into the $J$ cells of their
+cross-classification, and let the $k$ dummy-coded columns be constant
+within cells while the $p$ continuous columns vary freely.  Two
+classical facts frame the problem.  When $p = 0$, the exponential-family
+log likelihood collapses onto within-cell aggregates, and estimation on
+the $J$ cells reproduces the microdata maximum-likelihood estimator
+(MLE) exactly---the standard device of grouped Poisson rate modeling
+\citep{frome1983,clayton1993,breslow1987} and, for binary data, of
+grouped binomial fitting.  And the collapse is fragile: we show
+(Proposition~\ref{prop:sufficiency}) that for $p \ge 1$ \emph{no}
+fixed-dimensional cell summary can support the likelihood
+\emph{function}, because evaluating the within-cell cumulant sum at all
+parameter values determines the Laplace transform of the within-cell
+empirical measure of the continuous covariates---and Laplace transforms
+determine measures.  The argument is not Poisson folklore: we prove it
+for the Poisson and Bernoulli families by one uniqueness argument, so
+the impossibility is a property of the exponential family, not of a
+particular application.
 
-This paper develops a resolution that is exact rather than approximate.
-The starting point is a precise statement of what breaks
-(Proposition~\ref{prop:sufficiency}): with continuous covariates, any
-statistic from which the likelihood \emph{function} can be evaluated
-must determine the entire within-cell empirical distribution of the
-continuous covariates---the within-cell Laplace transform appears in the
-likelihood, and Laplace transforms determine measures.  No fixed cell
-summary can therefore support the full likelihood surface.  The
-contribution is that estimation does not need the full surface; it needs
-score and curvature \emph{at the current iterate}, and these have an
-exact finite representation.  Theorem~\ref{thm:tilted} shows that for
-exponential dispersion families with canonical link, the score vector
-and Fisher information at any parameter value are linear combinations of
-the zeroth-, first-, and second-order moments of an \emph{exponentially
-tilted probability measure} on each cell---for the Poisson family, an
-Esscher transform of the within-cell empirical exposure measure,
-connecting the construction to classical tilting ideas in saddlepoint
-approximation and empirical likelihood
-\citep{esscher1932,daniels1954,efron1981,jensen1995,kitamura1997}.  The
-conceptual pivot is a distinction between \emph{likelihood exactness}
-and \emph{score exactness}.  Evaluating the likelihood function
-everywhere would require the full within-cell distribution
-(Proposition~\ref{prop:sufficiency}); but a Newton or Fisher-scoring
-step never needs the function everywhere---it needs the gradient and
-curvature at one point, the current iterate.  Those are score
-\emph{exact} from a fixed-dimensional summary even though the likelihood
-is not, and the summary that delivers them is the tilt, which moves with
-the iterate.  A fixed collapse fails because it tries to be likelihood
-exact; the tilted collapse succeeds because it only needs to be score
-exact, iterate by iterate.  Corollary~\ref{cor:complexity} converts the identity into
-complexity: each Newton iteration costs one streaming $O(N(p^2+p))$
-pass over the microdata---$p$ the number of continuous columns
-only---plus $O(J(k^2+kp))$ cell algebra, against $O(N(p+k)^2)$ for the
-full design, a saving that grows quadratically in the richness $k$ of
-the categorical structure.  Because the identity is exact rather than a linearization, the
-accelerated iterates coincide with full-design Newton up to
-floating-point reordering, which Section~\ref{sec:sim-validation}
-verifies at
-the $10^{-13}$--$10^{-15}$ level, iterate by iterate, across Poisson,
-logistic, and gamma models.  Fisher scoring under non-canonical links
-has the same structure (Proposition~\ref{prop:noncanonical}); for the
-gamma--log family the tilt weights are identically one and the moments
-are constant across iterations.
+The contribution of the paper is the observation that estimation does
+not require the likelihood function; it requires the gradient and
+curvature \emph{at the current iterate}, and these admit an exact
+finite representation that the function itself does not.
+Theorem~\ref{thm:tilted}---the tilted-moment identity---states that for
+any exponential dispersion family with canonical link, the score vector
+and information matrix at an arbitrary parameter value are linear
+combinations of three low-order moments ($M^{(0)}_j$, $\mathbf{m}_j$,
+$\bQ$) of an \emph{exponentially tilted} measure on each cell.  For the
+Poisson family the tilt is an Esscher transform of the within-cell
+exposure measure, free of the cell-level coefficients; for the
+Bernoulli--logit family it is the variance-weighted measure that
+concentrates on observations near the decision boundary; the identity
+is the same in both cases, and Fisher scoring under non-canonical links
+has the same structure (Proposition~\ref{prop:noncanonical}), with the
+gamma--log family as the limiting case in which the tilt weights are
+identically one and the moments are constant across iterations.  The
+tilt is the correct \emph{dynamic} object: a fixed collapse fails
+because it attempts likelihood exactness, which
+Proposition~\ref{prop:sufficiency} forbids; the tilted collapse
+succeeds because it needs only score exactness, iterate by iterate.
 
-The second half of the paper is deliberately computational.
-Section~\ref{sec:algorithms} gives the streaming algorithm and its
-implementation envelope: numerical safeguards (step-halving,
-log-domain evaluation, rank-deficiency fallbacks), memory layout and
-parallelization of the bandwidth-bound accumulation pass, exact
-cell-accumulated robust and cluster-robust covariance estimators, and
-the combination with absorbed fixed-effect factors, for which the
-companion theory---global convergence of the nonlinear
-alternating-projections cycle, its local rates for two and for three or
-more factors, and high-dimensional asymptotics up to one fixed effect
-per two observations---is developed in the online supplement.
-Section~\ref{sec:simulations} contains the experiments: iterate-level
-exactness against dense Newton (Section~\ref{sec:sim-validation});
-time-and-memory benchmarks against the implementations practitioners
-use---\texttt{statsmodels}, a sparse-design IRLS, and \texttt{glum}
-(QuantCo's optimized categorical-aware GLM) for the non-absorbed model
-(Section~\ref{sec:sim-baselines}), and \texttt{pyfixest} (the
-\texttt{fixest} algorithm) for the absorbed-factor path
-(Section~\ref{sec:sim-hdfe}); $O(N)$ time and memory scaling to
-$5\times10^7$ records (Section~\ref{sec:sim-scaling}); and a numerical
-stability battery (Section~\ref{sec:sim-stability}).
-Section~\ref{sec:applications} applies the method twice: to the public
-\texttt{nycflights13} data---a logistic on-time-performance model
-verified against \texttt{statsmodels} to $10^{-13}$ and, with $3{,}692$
-absorbed aircraft, against \texttt{pyfixest} to $10^{-9}$---and to a
-fully reproducible register-scale synthetic study (five million
-person-year episodes, $10{,}000$ absorbed municipality--year effects,
-cluster-robust inference, seconds on one core).  Section~\ref{sec:discussion} summarizes and points to the
-supplement's theory.  Proofs of the main-paper results are in the
-appendix; every number regenerates from short scripts included with the
-manuscript.
+The identity converts directly into complexity, which is the paper's
+scaling proposition (Corollary~\ref{cor:complexity}): one Newton or
+Fisher-scoring iteration costs a single streaming
+$O(N(p^2 + p + 1))$ pass over the microdata---the continuous columns
+only---plus $O(J(k^2 + kp))$ cell-level assembly and one
+$O((p+k)^3)$ solve, against $O(N(p+k)^2)$ for the full design.  The
+saving grows quadratically in the categorical richness $k$; the memory
+footprint contains no $Nk$ term at all, since no design matrix is ever
+formed; and, because the identity is exact rather than a linearization,
+the iterates coincide with dense Newton up to floating-point
+reordering, which Section~\ref{sec:sim-validation} verifies at
+$10^{-13}$--$10^{-15}$, iterate by iterate, for Poisson, logistic, and
+gamma models.  The distinction matters for how the method should be
+classified: it is not a stochastic-gradient, subsampled, or sketched
+solver with an accuracy--cost dial, but an exact reorganization of
+Newton's arithmetic whose output \emph{is} the MLE with its full
+inferential apparatus---observed information, sandwich, and
+cluster-robust covariance matrices, all accumulated cellwise in the
+same pass \citep{huber1967,white1980,liang1986}.
+
+The second half of the paper develops the identity into a solver and
+measures it.  Section~\ref{sec:algorithms} gives the streaming
+algorithm and its numerical envelope: log-domain likelihood kernels,
+backtracking line search, rank-deficiency and separation handling
+\citep{wedderburn1976,albert1984}, exact cell-accumulated covariance
+estimators, memory layout, and parallel structure.
+Section~\ref{sec:simulations} contains the experiments, organized
+around three comparisons: dense Newton as the ground-truth baseline for
+exactness; sparse-design IRLS---the strongest general-purpose
+competitor, since dummy columns are the textbook sparse design---for
+the like-for-like cost comparison; and the production solvers
+\texttt{statsmodels} \citep{seabold2010} and \texttt{glum}
+\citep{tabmat2021} for real-world viability, together with $O(N)$
+scaling to $5\times10^7$ observations and a numerical-stability battery
+spanning condition numbers to $10^{17}$.  Section~\ref{sec:applications}
+exercises the solver on public data (a logistic on-time-performance
+model for the $336{,}776$ flights of \texttt{nycflights13}, verified
+against \texttt{statsmodels} to $10^{-13}$) and on a
+$5\times10^6$-observation Poisson benchmark.
+
+One structured application receives separate treatment because it is
+the natural stress test of the engine: high-dimensional fixed-effect
+(HDFE) absorption, where one or more factors---firms, aircraft,
+region--period interactions \citep{abowd1999}---have too many levels
+even for cell-level treatment and are concentrated out by profile
+updates alternated with tilted-moment Newton steps
+(Section~\ref{sec:absorb-impl}).  The composition inherits the
+engine's economics: the absorbed factors never enter any design either.
+Convergence of the linear inner demeaning loop is classical---the
+method of alternating projections of von Neumann and
+\citet{halperin1962}, brought into fixed-effects estimation by
+\citet{gaure2013}---and the combined nonlinear GLM cycle has long been
+validated by simulation \citep{guimaraes2010,berge2018,correia2020};
+what has been missing is a single formal theorem for the combined
+inner--outer iteration, which we state as Theorem~\ref{thm:global-main}
+(proof in the supplement) and verify against \texttt{pyfixest} on real
+data with $3{,}692$ absorbed effects to $10^{-9}$.  The supplement
+develops the associated rate and asymptotic theory; in the main text
+the absorption path is strictly an application of the tilting engine,
+not a second subject.
 
 \paragraph{Relation to existing computational methods.}
-The idea sits at the intersection of several literatures, and its
-novelty is best stated by contrast with each.  \emph{Collapsed
-sufficient statistics} for log-linear rate models
-\citep{holford1980,clayton1993} are the special case $p = 0$; the tilted
-moments extend the exact collapse from ``all categorical'' to
-``categorical plus continuous,'' which is precisely the case the
-classical collapse cannot handle (Proposition~\ref{prop:sufficiency}).
-\emph{Matrix-free and Hessian-free Newton methods}
-\citep{pearlmutter1994,martens2010,nocedal2006} avoid forming the Hessian
-by supplying only Hessian--vector products to an iterative linear solver;
-they reduce memory but still stream the full design through every
-product and solve the $q$-dimensional system iteratively and
-approximately.  The tilted representation is different in kind: it forms
-the \emph{exact} $(p+k)$-dimensional Hessian and score in closed form
-from cell moments, so the inner solve is a small direct factorization,
-not a truncated conjugate-gradient loop, and the reduction is in the
-dimension of the linear algebra, not merely in whether the matrix is
-stored.  \emph{Grouped or blockwise IRLS} and stochastic second-order
-methods \citep{byrd2011} exploit structure in the working weights or
-subsample the Hessian; they are approximate where the tilted step is
-exact, and they do not use the key fact here---that within a cell the
-information contribution is a tilted moment, computable without revisiting
-the cell.  \emph{Automatic differentiation}
-\citep{baydin2018} would compute the same score and Hessian but by
-propagating through the $N$-row design, at $O(N(p+k)^2)$; it mechanizes
-the derivative, whereas the contribution here is the analytic identity
-that makes the derivative a cell-level object.  \emph{Sparse-design}
-GLM solvers and out-of-core packages
+The method occupies a specific point in the landscape of large-$N$ GLM
+computation, and its novelty is best stated by contrast.
+\emph{Approximate data-reduction methods}---optimal subsampling for
+logistic regression \citep{wang2018}, information-based subdata
+selection \citep{wang2019}, leverage-score sampling \citep{ma2015},
+local case-control sampling for rare events \citep{fithian2014}, and
+randomized sketching \citep{drineas2016}---trade statistical accuracy
+for cost along a tunable frontier; the tilted pass is exact and
+deterministic, so where a cell structure exists it dominates this
+frontier pointwise rather than moving along it.  \emph{Collapsed
+sufficient statistics} for grouped rate and binomial models
+\citep{frome1983,clayton1993} are the special case $p = 0$; the tilted
+moments extend the exact collapse to $p \ge 1$, which is precisely the
+case Proposition~\ref{prop:sufficiency} shows a fixed collapse cannot
+reach.  \emph{Matrix-free and Hessian-free Newton methods}
+\citep{pearlmutter1994,martens2010,nocedal2006} avoid storing the
+Hessian by supplying Hessian--vector products to an iterative solver;
+they still stream the full design through every product and solve the
+$q$-dimensional system approximately, whereas the tilted representation
+forms the \emph{exact} $(p+k)$-dimensional system in closed form from
+cell moments and solves it directly.  \emph{Grouped or stochastic
+second-order methods} \citep{byrd2011} subsample curvature; the tilted
+step is exact.  \emph{Automatic differentiation} \citep{baydin2018}
+mechanizes the same derivatives at $O(N(p+k)^2)$; the contribution here
+is the analytic identity that makes the derivative a cell-level object.
+\emph{Sparse-design and bounded-memory solvers}
 (\texttt{glum}, \citealp{tabmat2021}; \texttt{biglm},
-\citealp{lumley2011}) store the dummy block sparsely; as
-Section~\ref{sec:sim-baselines} shows, this is the strongest general
-competitor, but the tilted pass never forms a design at all and its cost
-grows only in the continuous dimension.  \emph{Distributed and
-communication-avoiding} optimization
-\citep{zhang2013,jaggi2014} targets the orthogonal axis of splitting one
-fit across machines; the tilted pass is a single-machine, single-pass
-reorganization that such schemes could adopt per shard, since its
-accumulators are additive across data partitions.  Finally, the
-\emph{alternating-projections HDFE} stack
-\citep{guimaraes2010,gaure2013,correia2016,correia2020,berge2018}
-removes dummy factors by demeaning but streams the full non-absorbed
-design through every IRLS step; the two devices are complementary, and
-Section~\ref{sec:absorb-impl} combines them, with the tilted pass
-handling the cell-structured part that HDFE tools treat as ordinary
-covariates.  In short, the novelty is neither ``a sufficient statistic
-exists'' nor ``regroup the sums'': it is the exact, iterate-dependent
+\citealp{lumley2011}) store the dummy block sparsely or stream the
+design in chunks; Section~\ref{sec:sim-baselines} shows the sparse route
+is the strongest general competitor, and that the tilted pass wins
+because it never materializes a design at all and its cost grows only
+in the continuous dimension.  \emph{Distributed and
+communication-avoiding optimization} \citep{zhang2013,jaggi2014}
+splits one fit across machines, an orthogonal axis: the tilted
+accumulators are additive across data partitions, so the pass
+distributes trivially per shard.  Finally, the \emph{HDFE stack}
+\citep{guimaraes2010,gaure2013,correia2016,correia2020,berge2018,
+stammann2018} removes dummy factors by iterative demeaning but streams
+the full non-absorbed design through every IRLS step; the two devices
+compose (Section~\ref{sec:absorb-impl}), with the tilted pass handling
+the cell-structured block that HDFE tools treat as ordinary columns.
+In summary: the contribution is neither ``a sufficient statistic
+exists'' nor ``regroup the sums,'' but the exact, iterate-dependent
 tilted-moment identity (Theorem~\ref{thm:tilted}) that turns the score
-and the full Hessian of a mixed categorical--continuous GLM into a
-one-pass cell computation, together with its consequences for scale.
+and the full information matrix of a mixed categorical--continuous GLM
+into a one-pass cell computation, together with its complexity, memory,
+and stability consequences.
 
-The framework is implemented in the Stata command \texttt{stpois} for
-the Poisson event-history case and in an open-source Python reference
-implementation used for all experiments here.
+All numerical results regenerate from a self-contained open-source
+Python/NumPy reference implementation released with the manuscript; a
+companion Stata command (\texttt{stpois}), distributed in the same
+repository, implements the Poisson event-history case for applied use.
 
 % =========================================================================
 \section{Exponential family models and the failure of ordinary
@@ -342,7 +342,8 @@ f(y_i \mid \theta_i, \phi)
 \end{equation}
 with $b : \Theta \to \R$ strictly convex and three times continuously
 differentiable on the open canonical parameter space $\Theta \subseteq \R$,
-and dispersion $\phi > 0$ \citep{mccullagh1989}.  The mean and variance
+and dispersion $\phi > 0$
+\citep{nelder1972,jorgensen1987,mccullagh1989}.  The mean and variance
 are $\mu_i = b'(\theta_i)$ and $\Var(y_i) = \phi\, b''(\theta_i)$.  We
 model the linear predictor
 \begin{equation}\label{eq:linpred}
@@ -350,13 +351,17 @@ model the linear predictor
 \qquad \btheta = (\bgamma', \bdelta')' \in \R^{q}, \quad q = p + k,
 \end{equation}
 and, until Section~\ref{sec:noncanonical}, take the link to be canonical,
-$\theta_i = \eta_i$.  The Poisson event-history model that motivates much
-of the applied work is the special case $b(\theta) = e^{\theta}$,
-$\phi = 1$, $y_i \in \{0, 1, 2, \dots\}$ an event count, and
-$o_i = \log t_i$ the log of the time at risk; the piecewise-exponential
-equivalence of \citet{holford1980,laird1981,whitehead1980} makes this the
-canonical likelihood for register-based survival analysis.  Up to terms
-not involving $\btheta$, the log likelihood is
+$\theta_i = \eta_i$.  Two members of the family serve as running
+examples throughout, on equal footing.  \emph{Poisson}:
+$b(\theta) = e^{\theta}$, $\phi = 1$, $y_i$ a count, and
+$o_i = \log t_i$ a log exposure; with episode-split survival data this
+is the piecewise-exponential event-history likelihood
+\citep{holford1980,aitkin1980,andersen1993}.  \emph{Bernoulli--logit}:
+$b(\theta) = \log(1 + e^{\theta})$, $\phi = 1$, $y_i \in \{0, 1\}$---the
+workhorse for binary outcomes at scale.  The gamma family with log link
+enters in Section~\ref{sec:noncanonical} as the canonical illustration
+of the non-canonical case.  Up to terms not involving $\btheta$, the
+log likelihood is
 \begin{equation}\label{eq:loglik}
 \ell(\btheta)
   = \frac{1}{\phi} \sum_{i=1}^{N}
@@ -380,47 +385,71 @@ the offset.  For the Poisson family with $o_i = \log t_i$,
 \eqref{eq:loglik} becomes
 $\ell(\bdelta) = \sum_j \{ D_j\, \bdelta'\bw_j - T_j e^{\bdelta'\bw_j} \}
 + \mathrm{const}$, with $D_j = \sum_{i \in j} y_i$ and
-$T_j = \sum_{i \in j} t_i$: the collapsed cell data $(D_j, T_j)$ carry all
-the information, and estimation on the $J$ cells is exact.  The following
+$T_j = \sum_{i \in j} t_i$: the collapsed cell data $(D_j, T_j)$ carry
+all the information.  For the Bernoulli--logit family with constant
+offsets the same collapse holds with $(D_j, n_j)$, the cell event count
+and cell size---grouped binomial fitting.  In both cases estimation on
+the $J$ cells is exact, at $O(Jq^2)$ per iteration.  The following
 proposition records why no analogous finite collapse survives the
-introduction of a continuous covariate, and in what precise sense.  Define
-the within-cell \emph{exposure measure}
+introduction of a continuous covariate, and in what precise sense; the
+argument is a property of the family's cumulant function, and we give it
+in one form that covers both running examples.  Define the within-cell
+\emph{weighted covariate measure}
 $\nu_j = \sum_{i \in j} e^{o_i} \delta_{\bx_i}$ on $\R^p$ (for Poisson,
-$\nu_j = \sum_{i \in j} t_i \delta_{\bx_i}$), a finite discrete measure
-recording the joint configuration of exposures and continuous covariates
-in cell $j$.
+the exposure measure $\nu_j = \sum_{i \in j} t_i \delta_{\bx_i}$; for
+Bernoulli without offsets, the empirical measure of the continuous
+covariates), a finite discrete measure recording the joint configuration
+of offsets and continuous covariates in cell $j$, and write
+$\mathcal{L}_{\nu_j}(\bgamma) = \int e^{\bgamma'\bx}\,\nu_j(\dd\bx)$ for
+its Laplace transform.
 
-\begin{proposition}[Collapse and its failure]\label{prop:sufficiency}
-Consider the Poisson family with offsets.  (i) If $\bx_i = \bar\bx_j$ for
-all $i \in j$ and all $j$, the log likelihood \eqref{eq:loglik} depends on
-the data only through $\{(D_j, T_j, \bar\bx_j, \sum_{i\in j} y_i \bx_i)\}_{j \le J}$,
-and the MLE on the collapsed cells equals the microdata MLE.
+\begin{proposition}[Failure of fixed collapse]\label{prop:sufficiency}
+Let the cumulant $b$ be real-analytic on $\R$ with
+$b(u) = e^{u}\,(1 + o(1))$ as $u \to -\infty$---as holds for the Poisson
+family, where $b(u) = e^u$ exactly, and the Bernoulli family, where
+$b(u) = \log(1 + e^u)$.
+(i) If $(\bx_i, o_i) = (\bar\bx_j, \bar o_j)$ for all $i \in j$ and all
+$j$, the log likelihood \eqref{eq:loglik} depends on the data only
+through $\{(D_j, n_j, \bar\bx_j, \bar o_j, \sum_{i\in j} y_i
+\bx_i)\}_{j \le J}$, and the MLE on the collapsed cells equals the
+microdata MLE; for Poisson the offset need not be constant, and
+$(D_j, T_j)$ suffices as above.
 (ii) In general, $\ell(\bgamma, \bdelta)$ depends on the data through
-$\{ S_j, D_j, \mathcal{L}_{\nu_j} \}_{j\le J}$, where
+$\{ S_j, D_j, G_j \}_{j \le J}$, where
 $S_j = \sum_{i \in j} y_i \bx_i$ and
-$\mathcal{L}_{\nu_j}(\bgamma) = \int e^{\bgamma'\bx} \nu_j(\dd\bx)
-= \sum_{i \in j} t_i e^{\bgamma'\bx_i}$ is the Laplace transform of
-$\nu_j$; and $\mathcal{L}_{\nu_j}$ determines $\nu_j$.  Consequently any
-statistic from which the likelihood function can be computed for all
-$\bgamma$ in an open set must determine the entire within-cell exposure
-measure, whose support size---hence the dimension of any such
-statistic---grows with the number of distinct covariate values in the
-cell.  (iii) By strict convexity of the exponential (Jensen),
-$\mathcal{L}_{\nu_j}(\bgamma) \ge T_j e^{\bgamma' \bar\bx_j}$ with
-equality for some $\bgamma \ne \bzero$ direction only if $\bx$ is
-$\nu_j$-a.s.\ constant along that direction: replacing microdata by cell
-means strictly understates the within-cell mass of the cumulant term and
-is not a reparametrization of the same likelihood.
+$G_j(s, \bgamma) = \sum_{i \in j} b(s + \bgamma'\bx_i + o_i)$ is the
+within-cell cumulant functional; and any statistic from which the
+likelihood function can be evaluated for $(\bgamma, \bdelta)$ in an open
+set determines $G_j$ on an open set, hence---by real-analyticity in $s$
+and the boundary expansion
+$e^{-s} G_j(s, \bgamma) \to \mathcal{L}_{\nu_j}(\bgamma)$ as
+$s \to -\infty$---determines the Laplace transform of $\nu_j$, and
+therefore $\nu_j$ itself.  The support size of $\nu_j$, and with it the
+dimension of any such statistic, grows with the number of distinct
+covariate values in the cell: no fixed-dimensional cell summary can
+support the likelihood function.
+(iii) By strict convexity of the exponential (Jensen),
+$\mathcal{L}_{\nu_j}(\bgamma) \ge \nu_j(\R^p)\,
+e^{\bgamma' \bar\bx_j}$ with equality along a direction of $\bgamma$
+only if $\bgamma'\bx$ is $\nu_j$-a.s.\ constant along it: replacing
+microdata by cell means strictly understates the within-cell mass of
+the cumulant term and is not a reparametrization of the same
+likelihood---the same convexity mechanism that biases log-linearized
+estimation relative to Poisson pseudo-maximum-likelihood
+\citep{santossilva2006}.
 \end{proposition}
 
 Part (ii) is the formal statement of the practical dictum that
-``continuous covariates destroy collapsibility'': the fixed-dimensional
-sufficient statistic $\sum_i y_i \ba_i$ for the canonical parameter still
-exists, but \emph{computing the likelihood}---and hence the MLE---requires
-functionals of the data whose dimension is of order $N$, not $J$.  The
-next subsection shows that the required functionals nevertheless have a
-special structure: for each trial value of $\bgamma$ they are three
-low-order moments of a tilted measure, computable in one linear pass.
+``continuous covariates break collapsibility,'' and it holds uniformly
+across the family: the fixed-dimensional sufficient statistic
+$\sum_i y_i \ba_i$ for the canonical parameter still exists, but
+\emph{computing the likelihood function}---and hence running any
+optimizer that evaluates it---requires functionals of the data whose
+dimension is of order $N$, not $J$.  The next section shows that the
+required functionals nevertheless have a special structure at any
+\emph{single} parameter value: they are three low-order moments of a
+tilted measure, computable in one linear pass.  Estimation needs only
+this pointwise object.
 
 % =========================================================================
 \section{Tilted cell moments}\label{sec:tilted-main}
@@ -452,9 +481,10 @@ $\Var_{P_{j,\bgamma}}(\bx) = \nabla^2 K_j(\bgamma)$.
 \end{definition}
 
 The tilt \eqref{eq:esscher} is precisely the change of measure that
-underlies saddlepoint approximation \citep{daniels1954,jensen1995} and
-exponential-tilting estimators in the empirical-likelihood family
-\citep{efron1981,kitamura1997,schennach2007}; here it appears not as an
+underlies exponential-family conjugation and saddlepoint approximation
+\citep{barndorff1978,daniels1954,jensen1995} and exponential-tilting
+estimators in the empirical-likelihood family
+\citep{efron1981,kitamura1997,owen2001,schennach2007}; here it appears not as an
 approximation device but as an exact algebraic identity for the score and
 information, as follows.  Write, for each cell $j$,
 \begin{equation}\label{eq:moments}
@@ -501,6 +531,12 @@ $B_j = M_j^{(0)} = e^{\bdelta'\bw_j} \mathcal{L}_{\nu_j}(\bgamma)$,
 $\mathbf{m}_j = M_j^{(0)} \nabla K_j(\bgamma)$,
 and the $\bgamma$-block of $\bF$ is
 $\sum_j M_j^{(0)} \{ \nabla^2 K_j(\bgamma) + \nabla K_j \nabla K_j' \}$.
+For the Bernoulli--logit family, $b''(\eta_i) = \mu_i(1 - \mu_i)$: the
+information tilt weights each within-cell observation by its Bernoulli
+variance, concentrating $P_{j,\btheta}$ on observations near the
+decision boundary; the tilt depends on $\bdelta$ through $\mu_i$, so the
+moments \eqref{eq:moments} are re-accumulated at each iterate---which is
+exactly what the single pass does.
 \item[(iv)] The Newton step
 $\btheta^{+} = \btheta + \bF(\btheta)^{-1} \bU(\btheta)$ computed from the
 quantities in (i)--(ii) is identical to the Newton step computed from the
@@ -508,10 +544,10 @@ full $N \times q$ design.
 \end{enumerate}
 \end{theorem}
 
-Claim (iv) is trivial once (i)--(ii) are established---the two
+Claim (iv) is immediate once (i)--(ii) are established---the two
 computations produce the same matrices---but it is the operative point:
-the decomposition involves \emph{no linearization, discretization, or
-approximation of any kind}, so the accelerated algorithm is not a fast
+the decomposition involves no linearization, discretization, or
+stochastic approximation, so the accelerated algorithm is not a fast
 approximate estimator but a fast exact organization of the arithmetic of
 the MLE.  Section~\ref{sec:sim-validation} exhibits agreement of the full
 iterate \emph{sequences} at the $10^{-13}$ level, which is the accumulation
@@ -534,7 +570,7 @@ identified through between-cell variation as long as the cell-level
 design $\bw_j$ is not saturated; Section~\ref{sec:app-flights}
 exercises this case.)
 
-\begin{corollary}[Per-iteration complexity]\label{cor:complexity}
+\begin{corollary}[Scaling]\label{cor:complexity}
 One Newton iteration computed via Theorem~\ref{thm:tilted} costs
 \[
 \underbrace{O\!\left(N(p^2 + p + 1)\right)}_{\text{microdata pass}}
@@ -575,7 +611,9 @@ working residual
 \omega_i = \frac{1}{V(\mu_i)\, g'(\mu_i)^2}, \qquad
 r_i = (y_i - \mu_i)\, g'(\mu_i)\,\omega_i
 \end{equation}
-\citep[Sec.~2.5]{mccullagh1989}, where $V$ is the variance function and
+\citep[Sec.~2.5]{mccullagh1989}---the quasi-likelihood weighting of
+\citet{wedderburn1974}, whose IRLS/Gauss--Newton correspondence is
+developed by \citet{green1984}---where $V$ is the variance function and
 $g'(\mu) = \partial\eta/\partial\mu$.  Comparing with
 Theorem~\ref{thm:tilted}, the only change is that the pair
 $(b'(\eta_i), b''(\eta_i)) = (\mu_i, \omega_i^{\mathrm{can}})$ of the
@@ -620,20 +658,20 @@ cost.
 
 \subsection{Families in scope}\label{sec:families-main}
 
-Three instances cover most applied use and are carried through the
-experiments.  \emph{Poisson with log link} (canonical): the tilt is the
-$\bdelta$-free Esscher transform \eqref{eq:esscher}, and the
-event-history offset $o_i = \log t_i$ makes this the estimator of
-piecewise-constant hazard models on episode-split survival data
-\citep{holford1980,whitehead1980}.  \emph{Logistic} (canonical): the
-tilt weights $\omega_i = \mu_i(1-\mu_i)$ concentrate the within-cell
-measure on observations near the decision boundary and depend on
-$\bdelta$, so the moments are re-accumulated each iteration---which the
-single pass does anyway.  \emph{Gamma with log link} (non-canonical,
-Proposition~\ref{prop:noncanonical}): the Fisher weights are identically
-one, the moments are constant across iterations, and after the first
-pass each iteration costs $O(Np) + O(Jk^2)$.  We deliberately stop the
-catalogue here; the point is the structure, not an enumeration.
+Three instances are carried through the experiments, chosen to span
+the structural cases rather than to catalogue applications.
+\emph{Poisson with log link} (canonical; $\bdelta$-free Esscher tilt
+\eqref{eq:esscher}, moments computable from within-cell cumulant
+generating functions) and \emph{Bernoulli with logit link} (canonical;
+$\bdelta$-dependent variance tilt, moments re-accumulated per iterate)
+are the two running examples and receive equal treatment throughout.
+\emph{Gamma with log link} (non-canonical,
+Proposition~\ref{prop:noncanonical}) is the boundary case of the Fisher
+weight: $\omega_i \equiv 1$, so the ``tilted'' moments are ordinary
+cell moments, fixed across iterations, and after the first pass each
+iteration costs $O(Np) + O(Jk^2)$.  Together the three exhibit the full
+range of tilt behavior---exactly exponential, iterate-dependent, and
+constant.
 % =========================================================================
 \section{Algorithms and implementation}\label{sec:algorithms}
 % =========================================================================
@@ -688,14 +726,20 @@ the first iterations and convergence is quadratic.  (ii) \emph{Log-domain
 evaluation}: likelihood and mean evaluations use \texttt{log1p} /
 \texttt{logaddexp}-style kernels so that extreme linear predictors
 (produced, e.g., en route to a separated fit) yield $-\infty$ log
-likelihoods rather than overflow.  (iii) \emph{Rank deficiency}: if the
-assembled $\bF$ is singular---collinear cell-level columns, or vanishing
-weights under quasi-separation---the solve falls back to a minimum-norm
+likelihoods rather than overflow.  (iii) \emph{Rank deficiency and
+separation}: existence and uniqueness of the GLM MLE can fail
+\citep{wedderburn1976}, classically under complete or quasi-complete
+separation in the binary case \citep{albert1984} and under analogous
+boundary configurations for Poisson
+\citep{santossilva2010,santossilva2011,correia2019}.  If the assembled
+$\bF$ is singular---collinear cell-level columns, or vanishing weights
+under quasi-separation---the solve falls back to a minimum-norm
 (pseudoinverse) direction and the iteration runs to its cap with the
 non-convergence flagged, never silently; separation is a property of the
-data, not of the algorithm, and Section~S3 of the supplement develops
-the Firth-adjusted variant that restores a finite maximizer inside the
-same pass.
+data, not of the algorithm.  Section~S3 of the supplement develops the
+bias-reducing adjusted-score variant of \citet{firth1993}---the standard
+finite-maximizer remedy \citep{heinze2002,kosmidis2009}---computed
+inside the same streaming pass at the same per-iteration order.
 
 \subsection{Memory layout and parallelism}\label{sec:memory}
 
@@ -708,9 +752,9 @@ Gram update running near peak.  Three standard remedies raise the tilted
 pass toward bandwidth saturation and beyond: (i) \emph{cache locality}:
 storing the microdata sorted by cell converts the binned accumulations
 into contiguous segmented sums, so each cell's partial moments stay in
-registers/L1 and the pass touches each cache line once (this is how the
-Mata implementation in \texttt{stpois} organizes the sweep, following
-\citealp{correia2016}); (ii) \emph{fusion}: the weight evaluation,
+registers/L1 and the pass touches each cache line once, the streaming
+analogue of the classical one-pass moment updates of \citet{welford1962}
+(cf.\ \citealp{correia2016}); (ii) \emph{fusion}: the weight evaluation,
 residual, binned sums, and Gram update share one loop, so the data are
 read once per iteration rather than once per moment; and (iii)
 \emph{parallelism}: cells are independent, so the pass shards trivially
@@ -751,47 +795,71 @@ fits.  The reference implementation is pure NumPy/SciPy on the system
 BLAS, single-threaded (BLAS threads pinned to one) so that the comparison
 reflects algorithmic organization rather than parallel speedup, which
 Section~\ref{sec:memory} argues the tilted pass admits but does not yet
-use.  The exact hardware affects the constants, not the ratios or the
-$O(\cdot)$ trends, which are the paper's claims; every figure regenerates
-from the scripts in the code supplement.
+use.  The dense-side factorizations and the pseudoinverse fallback follow
+standard practice \citep{golub2013}.  The exact hardware affects the
+constants, not the ratios or the $O(\cdot)$ trends, which are the
+paper's claims; every figure regenerates from the scripts in the code
+supplement.
 
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
 
 All variance estimators used in practice share the cell structure.  The
 observed/expected information is $\bF$ itself (Theorem~\ref{thm:tilted}).
-The HC-type sandwich needs $\sum_i \hat u_i^2 \ba_i \ba_i'$ with
+The Huber--White sandwich estimator
+\citep{huber1967,white1980,white1982}---the default under conditional-mean
+correctness without full distributional trust
+\citep{gourieroux1984}---needs $\sum_i \hat u_i^2 \ba_i \ba_i'$ with
 $\hat u_i = y_i - \hat\mu_i$; its blocks accumulate cellwise exactly like
 \eqref{eq:moments} with $\omega_i$ replaced by $\hat u_i^2$.  The
-cluster-robust estimator sums scores within clusters before the outer
-product; when clusters are unions of cells (the common design: cluster on
-region, cells within region) the accumulation is again one pass.  These
-identities are what make \emph{inference}, not just point estimation,
-run at cell-collapsed cost; they are implemented in the reference code
-and validated against dense computation in the test suite.
+cluster-robust estimator \citep{liang1986,cameron2011} sums scores within
+clusters before the outer product; when clusters are unions of cells (the
+common design: cluster on region, cells within region) the accumulation
+is again one pass.  These identities are what make \emph{inference}, not
+just point estimation, run at cell-collapsed cost; they are implemented
+in the reference code and validated against dense computation in the
+test suite.
 
 
 
-\subsection{Absorbed fixed-effect factors}\label{sec:absorb-impl}
+\subsection{A stress test: absorbed fixed-effect factors}
+\label{sec:absorb-impl}
 
-Applications often add factors whose level counts preclude even
-cell-level treatment---firms, hospitals, municipality--year
-interactions.  The framework composes with the standard absorption
-device: augment the linear predictor with $G$ absorbed factors
-$\alpha^{(g)}_{g(i)}$, concentrate them out by cycling closed-form
-profile updates (for Poisson, $\alpha^{(g)}_a = \log\{\sum_{i: g(i)=a}
-y_i / \sum_{i: g(i)=a} \exp(\eta_i - \alpha^{(g)}_a)\}$, the
-multiplicative update of \citealp{berge2018,correia2020}), and take each
+The natural stress test of the tilting engine is the setting where some
+factors have too many levels even for cell-level treatment---the worker
+and firm effects of \citet{abowd1999}, hospitals, aircraft,
+municipality--year interactions---and are removed by \emph{absorption}
+rather than estimation.  The engine composes with the standard
+absorption device: augment the linear predictor with $G$ absorbed
+factors $\alpha^{(g)}_{g(i)}$, concentrate them out by cycling
+closed-form profile updates (for Poisson, $\alpha^{(g)}_a =
+\log\{\sum_{i: g(i)=a} y_i / \sum_{i: g(i)=a} \exp(\eta_i -
+\alpha^{(g)}_a)\}$, the multiplicative update of
+\citealp{guimaraes2010,berge2018,correia2020}, used at scale in
+three-way gravity estimation by \citealp{larch2019}), and take each
 tilted-moment Newton step on $(\bgamma, \bdelta)$ at the profiled
 effects, with the inner cycle re-solved at every trial point of the line
 search (Algorithm~S1 of the supplement).  Each inner sweep is $O(N)$;
 with a single absorbed factor the inner solve is exact in one sweep.
+The composition inherits the engine's economics: absorbed factors, like
+cells, never enter any design matrix.
 
-This inner--outer scheme is exactly the algorithm used across the
-HDFE--GLM software ecosystem, and it is the one for which the applied
-literature has recorded no convergence guarantee.  Because the algorithm
-is central to the absorbed-factor results of this paper, we state the
-guarantee here and defer its proof, and the finer rate and asymptotic
-theory, to the online supplement.
+This inner--outer scheme is the algorithm used across the HDFE--GLM
+software ecosystem, and its convergence status deserves a precise
+statement.  Convergence of the \emph{inner} loop---iterative demeaning
+over the absorbed factors at fixed weights---is classical: it is the
+method of alternating projections, established for two subspaces by von
+Neumann \citeyearpar{vonneumann1950} and for arbitrarily many by
+\citet{halperin1962}, with the Kaczmarz sweep \citep{kaczmarz1937} as
+the coordinate special case (see \citealp{escalante2011} for a
+monograph treatment and \citealp{deutschhundal1997} for rates), and it
+was brought into fixed-effects estimation on exactly this foundation by
+\citet{gaure2013}.  The \emph{combined} nonlinear cycle---profile
+updates of the absorbed effects alternated with Newton/scoring steps on
+a GLM likelihood---has, by contrast, been validated by simulation and
+practice \citep{guimaraes2010,berge2018,correia2020} rather than by
+proof.  The following theorem supplies the missing unified statement
+for the combined inner--outer iteration; its proof, and the finer rate
+and asymptotic theory, are in the online supplement.
 
 \begin{theorem}[Global convergence of the absorbed-factor iteration]
 \label{thm:global-main}
@@ -825,8 +893,12 @@ MLE, its asymptotics are the MLE's: classical at fixed dimension, and,
 in the proportional regime of one Poisson fixed effect per bounded-size
 cell ($J/N \to c \in (0,1)$), unbiased with valid cell-clustered standard
 errors, because profiling then coincides with conditioning
-(Theorems~S4--S6).  Separated absorbed groups (no events) are detected
-and dropped a priori, as in \citet{correia2020};
+(Theorems~S4--S6; cf.\ the incidental-parameter analysis of
+\citealp{fernandezval2016}).  Separated absorbed groups (no events) are detected
+and dropped a priori---the level-wise instance of the drop rule of
+\citet{correia2019}, whose linear-programming certificate treats
+separation in full generality and is implemented in
+\texttt{ppmlhdfe} \citep{correia2020};
 Section~\ref{sec:app-register} exercises the full composition at scale,
 and Section~\ref{sec:app-flights} checks it against \texttt{pyfixest} on
 real data.
@@ -834,14 +906,19 @@ real data.
 \section{Numerical experiments}\label{sec:simulations}
 % =========================================================================
 
-All experiments run on a single laptop-class core (Python/NumPy
-reference implementation; scripts \texttt{sim1*} in the code
-supplement) and complete in minutes; every number below regenerates from
-a fixed seed.  The studies validating the supplement's absorption,
-asymptotic, and separation theory (convergence rates for two and three
-factors, the proportional regime, Firth under quasi-separation, the
-logit bias and its conditional repair) are reported in
-Section~S4 of the online supplement.
+All experiments run on a single laptop-class core of the Python/NumPy
+reference implementation and complete in minutes; every number below
+regenerates from a fixed seed (scripts in the code supplement).  The
+studies are organized around three comparisons: dense Newton as the
+ground-truth baseline for exactness (Section~\ref{sec:sim-validation});
+sparse-design IRLS as the strongest general-purpose competitor,
+together with the production solvers \texttt{statsmodels} and
+\texttt{glum} (Section~\ref{sec:sim-baselines}) and, for the absorbed
+path, \texttt{pyfixest} (Section~\ref{sec:sim-hdfe}); and the
+scaling, stability, and sensitivity envelope
+(Sections~\ref{sec:sim-scaling}--\ref{sec:sim-stability}).  The studies
+validating the supplement's absorption, asymptotic, and separation
+theory are reported in Section~S4 of the online supplement.
 
 \subsection{Exactness and per-iteration cost}
 \label{sec:sim-validation}
@@ -1088,8 +1165,9 @@ $5\times10^7$ & 59.6 & 3.79 & 200.8 & 53 \\
 Study~1f re-runs the exactness comparison under stress: cell sizes drawn
 from a Zipf($1.6$) law (a few giant cells, a long tail of tiny ones) and
 event rates pushed to $\sim\!0.2\%$ (Poisson means $\sim\!0.002$; logistic
-prevalence $\sim\!0.5\%$), with event-free cells dropped as the MLE
-requires.  Across all eight family $\times$ scenario combinations the
+prevalence $\sim\!0.5\%$)---the regime where approximate methods resort
+to case-control subsampling \citep{fithian2014}---with event-free cells
+dropped as the MLE requires.  Across all eight family $\times$ scenario combinations the
 maximum deviation from dense Newton stays at $10^{-15}$--$10^{-14}$,
 convergence takes at most $12$ iterations (rare-event fits need a few
 more steps, as their likelihoods are flatter), and the streaming pass
@@ -1166,7 +1244,7 @@ survives a covariate whose signal sits $16$ digits below its magnitude,
 and the honest remedy is to standardize, not to claim immunity.
 
 % =========================================================================
-\section{Applications}\label{sec:applications}
+\section{Case studies}\label{sec:applications}
 % =========================================================================
 
 \subsection{On-time performance of NYC flights}\label{sec:app-flights}
@@ -1226,20 +1304,16 @@ public repository cited in the script).
 
 \subsection{A register-scale stress test}\label{sec:app-register}
 
-The second application is a stress test at the scale that motivates the
-framework:
-spatial epidemiology on an emulated population register.  Because
-genuine Nordic register microdata cannot leave certified secure
-environments, the study uses a fully reproducible synthetic register,
-calibrated to published all-cause mortality gradients (Gompertz age
-slope, female advantage of $\sim\!0.45$ on the log scale, educational
-gradients of $0.1$--$0.4$, a secular decline of $1.2\%$ per year); the
-generator is 40 lines of the supplement and every number below
-regenerates end to end in under a minute.  The scientific template is a
-standard one---does a within-municipality environmental exposure predict
-mortality after fine demographic and spatial-temporal control?---and the
-computational shape combines every element of
-Sections~\ref{sec:tilted}--\ref{sec:algorithms}.
+The second case study is a full-composition benchmark at register
+scale, on synthetic data with a known generating process so that
+recovery can be verified exactly.  The rate structure is calibrated to
+realistic all-cause mortality gradients (a Gompertz age slope,
+sex and education log-rate contrasts of $0.1$--$0.45$, a secular trend),
+the generator is 40 lines of the code supplement, and every number below
+regenerates end to end in under a minute.  The configuration exercises
+every element of Sections~\ref{sec:tilted}--\ref{sec:algorithms}
+simultaneously: absorbed factors, cell-level design, continuous
+covariates, separation handling, and cluster-robust inference.
 
 The data comprise $N = 5{,}000{,}000$ person-year episodes ($35{,}526$
 deaths; crude rate $9.5$ per $1{,}000$ person-years) with:
@@ -1269,60 +1343,64 @@ within-municipality variation only, as it must be after absorption),
 female $-0.455$ (truth $-0.45$), education gradients $-0.13/-0.27/-0.40$
 (truth $-0.12/-0.25/-0.40$), and a monotone age gradient tracking the
 Gompertz truth to two decimals.  The point of the exercise is not these
-numbers---the generator made them true---but the demonstration that a
-model of this shape, with inference, is an interactive-latency
-computation under the tilted-moment organization, whereas a dense
-dummy-variable design for the same model would need to allocate a
-terabyte-scale matrix before its first iteration; on genuine register
-data inside a secure environment, where wall-clock and memory budgets are
-tight and software dependencies restricted, this difference is often what
-determines whether such models are fitted at all.
+numbers---the generator made them true---but the computational
+demonstration: a model of this shape, with inference, is an
+interactive-latency computation under the tilted-moment organization,
+whereas a dense dummy-variable design for the same model would need to
+allocate a terabyte-scale matrix before its first iteration.
 
 
 % =========================================================================
 \section{Discussion}\label{sec:discussion}
 % =========================================================================
 
-The paper's message is one computational idea, developed to the point of
-routine use: when a GLM mixes a rich categorical structure with a few
-continuous covariates, the exact score and information---hence exact
-Newton, exact profile Hessians, and exact robust and clustered
-covariance matrices---are functions of three tilted within-cell moments
-that one streaming pass produces.  Ordinary collapse fails because the
-likelihood surface needs the whole within-cell distribution
-(Proposition~\ref{prop:sufficiency}); estimation succeeds because each
-iteration needs only the current tilt of that distribution
-(Theorem~\ref{thm:tilted}).  The experiments quantify what this buys
-over the implementations in actual use, including the strongest fair
-competitor (a sparse-design IRLS), and the applications show the method
-doing routine work on public and register-scale data.
+The paper establishes a single algorithmic result and measures its
+consequences.  For any exponential dispersion family whose design mixes
+cell-constant categorical structure with continuous covariates, the
+score vector and information matrix at an arbitrary parameter
+value---and with them exact Newton and Fisher-scoring steps, profile
+Hessians, and sandwich and cluster-robust covariance matrices---are
+linear combinations of three tilted within-cell moments that one
+streaming $O(N(p^2+p+1))$ pass produces
+(Theorem~\ref{thm:tilted}, Corollary~\ref{cor:complexity}).  The
+likelihood \emph{function} admits no such reduction
+(Proposition~\ref{prop:sufficiency}); the iteration does, and the gap
+between those two statements is the method.  The experiments bound its
+value against each relevant alternative: exactness against dense Newton
+at $10^{-13}$--$10^{-15}$; cost and memory against the strongest
+general-purpose competitor (sparse-design IRLS) and against production
+solvers; $O(N)$ scaling to $5\times10^7$ observations; and accuracy
+across a stability battery reaching condition numbers of $10^{17}$.
+Because the accumulators are additive across data partitions, the pass
+extends directly to distributed and out-of-core execution; a tuned
+(threaded, cache-blocked, or GPU segmented-reduction) implementation of
+the accumulation kernel is the natural engineering continuation.
 
-The device composes with, rather than competes against, the
-fixed-effect absorption stack: absorbed factors handle dummy structure
-too large even for cells, and the tilted pass handles everything else.
-The companion theory for that composition---global convergence of the
-nonlinear alternating-projections cycle for log-concave links, exact
-local rates for any number of absorbed factors from pairwise weighted
-cross-tabulations, asymptotics up to the proportional regime
-$J/N \to c$ with its Poisson unbiasedness and its logit failure-and-repair,
-and Firth and penalized variants computed inside the same pass---is
-developed, proved, and validated in the online supplement; we kept it
-out of the main text so that the computational contribution stands on
-its own terms.
+High-dimensional fixed-effect absorption served as the stress test, and
+the division of labor bears repeating: absorbed factors handle dummy
+structure too large even for cells, the tilted pass handles everything
+else, and neither ever enters a design matrix.  The inner demeaning
+loop's convergence is classical alternating-projections theory
+\citep{vonneumann1950,halperin1962,gaure2013}; the contribution here is
+the unified guarantee for the combined nonlinear cycle
+(Theorem~\ref{thm:global-main}) and, in the supplement, its local rates
+from pairwise cross-tabulations, asymptotics up to the proportional
+regime $J/N \to c$, and Firth and penalized variants computed inside
+the same pass.  These results are kept out of the main text so that the
+tilting engine stands as the paper's subject.
 
-\paragraph{Software.}  The algorithms are implemented twice.  The Stata
-command \texttt{stpois} implements the Poisson event-history case in
-production form (its software article documents the interface); a
-self-contained Python/NumPy reference implementation
-(\texttt{tilted\_glm.py}, roughly $800$ lines), which generated every
-number in this paper and the supplement, accompanies the manuscript and
-is organized to make the correspondence between code and results
-line-by-line auditable.  Both are available at
-\url{https://github.com/andreasljungstrm/stpois}.
+\paragraph{Software.}  All results regenerate from a self-contained
+open-source Python/NumPy reference implementation
+(\texttt{tilted\_glm.py}, roughly $800$ lines) released with the
+manuscript and organized so that the correspondence between code and
+stated results is line-by-line auditable; the benchmark harness fits
+every competitor in an isolated subprocess with peak-memory accounting.
+A companion Stata command (\texttt{stpois}), distributed in the same
+repository, implements the Poisson event-history case for applied use.
+Both are available at \url{https://github.com/andreasljungstrm/stpois}.
 
 \paragraph{Acknowledgments.}  The author thanks colleagues at SOFI for
-discussions of register-based event-history workflows that motivated
-this work.
+helpful discussions.
 
 \appendix
 \renewcommand{\thesection}{\Alph{section}}
@@ -1332,39 +1410,60 @@ this work.
 
 \subsection{Proof of Proposition~\ref{prop:sufficiency}}
 
-(i) If $\bx_i = \bar\bx_j$ within cells, then
-$\eta_i = \bgamma'\bar\bx_j + \bdelta'\bw_j + \log t_i$ and
-\eqref{eq:loglik} becomes
-$\sum_j \{ (\bgamma'\bar\bx_j + \bdelta'\bw_j) D_j - T_j
-e^{\bgamma'\bar\bx_j + \bdelta'\bw_j} \} + \mathrm{const}$, a function of
-the displayed cell statistics; the collapsed likelihood is the microdata
-likelihood up to an additive constant, so their maximizers and Hessians
-coincide.
+(i) If $(\bx_i, o_i) = (\bar\bx_j, \bar o_j)$ within cells, then
+$\eta_i = \bgamma'\bar\bx_j + \bdelta'\bw_j + \bar o_j$ is constant
+within cells and \eqref{eq:loglik} becomes
+$\sum_j \{ (\bgamma'\bar\bx_j + \bdelta'\bw_j + \bar o_j) D_j
+- n_j\, b(\bgamma'\bar\bx_j + \bdelta'\bw_j + \bar o_j)\}$ up to
+constants, a function of the displayed cell statistics for any cumulant
+$b$; the collapsed likelihood is the microdata likelihood up to an
+additive constant, so their maximizers and Hessians coincide.  For the
+Poisson family the exposure offset need not be constant, since
+$\sum_{i \in j} e^{\eta_i} = T_j\, e^{\bgamma'\bar\bx_j +
+\bdelta'\bw_j}$ collects the offsets into $T_j$.
 
-(ii) For the Poisson family,
+(ii) Writing $s_j = \bdelta'\bw_j$, the log likelihood is, up to
+constants,
 \[
 \ell(\bgamma, \bdelta)
-= \sum_j \Big\{ \bgamma' S_j + \bdelta'\bw_j D_j
-   - e^{\bdelta'\bw_j}\, \mathcal{L}_{\nu_j}(\bgamma) \Big\}
-   + \mathrm{const},
+= \sum_j \Big\{ \bgamma' S_j + s_j D_j + \textstyle\sum_{i\in j} o_i y_i
+   - G_j(s_j, \bgamma) \Big\},
+\qquad
+G_j(s, \bgamma) = \sum_{i \in j} b(s + \bgamma'\bx_i + o_i),
 \]
-which establishes computability from $\{S_j, D_j,
-\mathcal{L}_{\nu_j}\}$.  Conversely, suppose a statistic permits
-evaluation of $\ell$ on an open set $\mathcal{O} \ni (\bgamma_0,
-\bdelta_0)$.  The functions $\bdelta \mapsto e^{\bdelta'\bw_j}$ for
-distinct vectors $\bw_j$ are linearly independent on any open set, so
-from $\bdelta \mapsto \sum_j e^{\bdelta'\bw_j} \mathcal{L}_{\nu_j}
-(\bgamma)$ one recovers each $\mathcal{L}_{\nu_j}(\bgamma)$ for each
-$\bgamma$ in the open slice.  Each $\nu_j$ is a finite discrete measure,
-so $\mathcal{L}_{\nu_j}$ is entire; its values on an open subset of
-$\R^p$ determine it everywhere by analytic continuation, and the Laplace
-transform of a finite (positive) measure determines the measure.  Hence
-the statistic determines $\nu_j$, whose minimal description has dimension
-equal to (one plus $p$ times) its support size.
+which establishes computability from $\{S_j, D_j, G_j\}$.  Conversely,
+suppose a statistic permits evaluation of $\ell$ on an open set
+$\mathcal{O} \ni (\bgamma_0, \bdelta_0)$.  Provided the map $j \mapsto
+\bw_j$ is injective (cells are distinct covariate combinations) and
+$\bdelta \mapsto (s_1, \dots, s_J)$ has open range on $\mathcal{O}$'s
+$\bdelta$-slice---as holds whenever the $\bw_j$ are affinely
+independent, and in general after passing to the identified
+subfamily---one recovers each $G_j(\cdot, \bgamma)$ on an open interval
+of $s$ for each $\bgamma$ in the slice.  Each $G_j(\cdot, \bgamma)$ is a
+finite sum of translates of the real-analytic $b$, hence real-analytic
+on $\R$; knowledge on an open interval therefore determines it on the
+whole line by analytic continuation.  The boundary hypothesis
+$b(u) = e^u(1 + o(1))$ as $u \to -\infty$ then gives
+\[
+e^{-s}\, G_j(s, \bgamma)
+= \sum_{i \in j} e^{-s}\, b(s + \bgamma'\bx_i + o_i)
+\;\longrightarrow\; \sum_{i \in j} e^{\bgamma'\bx_i + o_i}
+= \mathcal{L}_{\nu_j}(\bgamma),
+\qquad s \to -\infty,
+\]
+termwise (for Poisson the relation is exact at every $s$; for Bernoulli
+it is the expansion $\log(1 + \varepsilon) = \varepsilon(1 + o(1))$).
+Hence the statistic determines $\mathcal{L}_{\nu_j}$ on an open subset
+of $\R^p$; $\mathcal{L}_{\nu_j}$ is entire because $\nu_j$ is finite and
+discrete, so it is determined everywhere by analytic continuation, and
+the Laplace transform of a finite positive measure determines the
+measure.  The statistic therefore determines $\nu_j$, whose minimal
+description has dimension equal to (one plus $p$ times) its support
+size.
 
 (iii) Jensen's inequality applied to the strictly convex map
-$z \mapsto e^z$ under the probability measure $\nu_j / T_j$ gives
-$T_j^{-1}\mathcal{L}_{\nu_j}(\bgamma) \ge
+$z \mapsto e^z$ under the probability measure $\nu_j / \nu_j(\R^p)$
+gives $\nu_j(\R^p)^{-1}\mathcal{L}_{\nu_j}(\bgamma) \ge
 \exp(\bgamma' \bar\bx_j)$ with equality iff $\bgamma'\bx$ is
 $\nu_j$-a.s.\ constant. \qed
 
