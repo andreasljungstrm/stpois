@@ -214,7 +214,7 @@ Theorems~\ref{thm:rate}--\ref{thm:multiG} characterize its rate.
 
 \subsection{Global convergence}\label{sec:global}
 
-We impose:
+I impose:
 
 \begin{assumption}\label{ass:canonical}
 The link is canonical and $b$ is strictly convex and twice continuously
@@ -283,7 +283,7 @@ Algorithm~\ref{alg:absorb} applies unchanged.  For links outside this
 class the log likelihood need not be concave in $\btheta$ and the
 guarantee weakens to what smooth ascent methods generically provide:
 monotone likelihood ascent with stationary limit points, without a
-global claim; we state this boundary explicitly since it is where the
+global claim; I state this boundary explicitly since it is where the
 folk confidence in the algorithm stops being a theorem.
 
 The proof (Appendix~\ref{app:global}) proceeds by establishing that
@@ -391,7 +391,8 @@ Administrative designs routinely absorb three or more factors---worker,
 firm, and region--year, say---and for $G \ge 3$ the linear
 alternating-projections literature offers norm bounds but no clean angle
 characterization of the asymptotic rate \citep{deutsch2001,badea2012}.
-The following theorem resolves the practical question for our setting:
+The following theorem resolves the practical question for the present
+setting:
 the exact local rate for any $G$ is a computable spectral quantity
 determined by the \emph{pairwise} weighted contingency structure of the
 factors alone, so the bipartite intuition of
@@ -500,7 +501,7 @@ Section~\ref{sec:sim-separation} quantifies its behavior.
 
 Because Theorem~1 of the main paper makes the tilted-moment estimator
 \emph{equal} to the MLE, its asymptotic analysis is the analysis of the
-MLE in the relevant regime.  We give results in three regimes,
+MLE in the relevant regime.  I give results in three regimes,
 in increasing order of dimensionality.  Throughout,
 $\btheta_0$ denotes the truth, expectations are under the model, and the
 triangular-array framework lets all design quantities depend on $N$.
@@ -530,7 +531,7 @@ the cell-accumulated sandwich of Section~4.4 of the main paper.
 
 The proof (Appendix~\ref{app:classical}) is a specialization of
 \citet{fahrmeir1985} plus the pseudo-ML results of
-\citet{gourieroux1984}; we include it because the triangular-array
+\citet{gourieroux1984}; I include it because the triangular-array
 statement with offsets and the exact form of the cell-accumulated
 sandwich are used repeatedly later.
 
@@ -588,7 +589,8 @@ $q_N^3/N \to 0$.
 \subsection{The proportional regime $J/N \to c$: Poisson profile
 likelihood as conditional likelihood}\label{sec:proportional}
 
-The regime that motivates this paper's title question is more extreme:
+The regime that motivates the proportional-dimension question is more
+extreme:
 one absorbed effect per cell with cells of \emph{bounded} size, so the
 parameter count is a positive fraction of the sample size and
 Theorem~\ref{thm:diverging} cannot apply ($q_N \asymp N$).  This is the
@@ -637,7 +639,7 @@ Schur-complement identity is what the tilted-moment machinery computes at
 $O(Np^2)$ per iteration (function \texttt{profile\_poisson} in the
 accompanying code).  Its consequence, however, seems not to have been
 developed as an explicit high-dimensional limit theorem with variance
-theory, which we now state.  Conditional on covariates and cell effects,
+theory, which I now state.  Conditional on covariates and cell effects,
 cells are independent; define the average conditional information
 $\bar{\bF}_J(\bgamma_0) = J^{-1} \sum_j \E\big[ D_j
 \Var_{\pi_j}(\bx_j) \big]$.
@@ -705,7 +707,7 @@ both estimators in (iii) cover at $94$--$96\%$.
 \subsection{Families beyond Poisson}\label{sec:families}
 
 The framework of Section~2 of the main paper was stated for a generic
-exponential dispersion family; we record the two most used instances.
+exponential dispersion family; I record the two most used instances.
 
 \emph{Logistic regression.}  With $b(\theta) = \log(1 + e^{\theta})$,
 $\mu_i = (1+e^{-\eta_i})^{-1}$ and $\omega_i = \mu_i(1-\mu_i)$: the tilt
@@ -737,7 +739,7 @@ within-cell weighted moments of $(\mu_i, \omega_i,
 \partial\omega_i/\partial\eta)$ and leverage-type quantities, all of
 which are cell-decomposable in exactly the sense of
 Theorem~1 of the main paper and Proposition~\ref{prop:firth}; there is no
-computational barrier to evaluating them inside the tilted pass, and we
+computational barrier to evaluating them inside the tilted pass, and I
 view a packaged implementation as worthwhile software work rather than
 an open methodological problem.
 
@@ -851,7 +853,7 @@ $N = 2\times10^5$) are assigned with a mixing parameter $\rho$: with
 probability $\rho$ a unit's level of factor 2 is deterministically tied
 to its level of factor 1, otherwise uniform---so $\rho$ sweeps the
 weighted bipartite graph from expander-like ($\rho = 0$) to nearly
-disconnected ($\rho = 0.99$).  At Poisson optimum weights we compute the
+disconnected ($\rho = 0.99$).  At Poisson optimum weights I compute the
 predicted per-sweep rate $\sigma_2^2$ from the normalized biadjacency
 kernel, then measure the empirical contraction factor of weighted
 alternating-projections demeaning of a generic covariate.
@@ -890,7 +892,7 @@ conjugate-gradient acceleration when the gap is small
 The second panel of the study probes Theorem~\ref{thm:multiG} with
 $G = 3$ factors ($J_1, J_2, J_3 = 100, 80, 60$; factor 2 tied to factor
 1 and factor 3 to factor 2, each with probability $\rho$).  For each
-$\rho$ we compute the exact level-space spectral rate of
+$\rho$ I compute the exact level-space spectral rate of
 Theorem~\ref{thm:multiG}(ii) (function \texttt{gs\_spectral\_rate},
 an eigencomputation on $240$ levels), the Friedrichs product certificate
 of Theorem~\ref{thm:multiG}(iii), and the empirical per-sweep
@@ -982,7 +984,7 @@ Study 4 stresses the boundary where Assumption~\ref{ass:mle-exists}
 fails.  Logistic model, $J = 10$ cells, a continuous covariate, and a
 rare binary exposure ($3\%$ prevalence, true log-odds $1.5$): in small
 samples the exposed events can be quasi-separated with appreciable
-probability.  We compare the MLE (tilted Newton, non-convergence or
+probability.  I compare the MLE (tilted Newton, non-convergence or
 $|\hat\gamma_z| > 10$ flagged as separated) with the Firth-adjusted
 tilted iteration of Proposition~\ref{prop:firth}, $500$ replications per
 $N$.
@@ -1028,7 +1030,7 @@ not.  Cells of size $m \in \{2, 4, 8\}$, one logit fixed effect per
 cell, $\alpha_j \sim \mathcal{N}(0,1)$, a single covariate with
 $\gamma_0 = 1$, $N = 8{,}000$, $500$ replications; uninformative cells
 (all events or all non-events) are dropped, as both estimators require.
-We compare the profile MLE (inner concentration of the cell effects by
+I compare the profile MLE (inner concentration of the cell effects by
 vectorized Newton, outer Schur-complement steps---the logit analogue of
 \texttt{profile\_poisson}) with the exact conditional MLE of
 \citet{chamberlain1980}, computed cellwise as described in
@@ -1061,7 +1063,7 @@ $2\gamma_0$ limit of \citealp{andersen1970}) and decays at the
 predicted $O(1/m)$, while the conditional estimator is unbiased to the
 third decimal at every $m$ \emph{at the same cell-collapsed
 computational cost}.  Read together with Study 3, the two tables make
-the paper's asymptotic message concrete: the proportional regime is not
+the asymptotic message concrete: the proportional regime is not
 generically safe (logit) nor generically fatal (Poisson); it is the
 profile--conditional coincidence, an algebraic property of the family,
 that decides---and when the coincidence fails, the conditional

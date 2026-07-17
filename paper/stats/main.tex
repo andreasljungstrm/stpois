@@ -100,9 +100,9 @@ columns with $p$ continuous columns, the $O(N(p+k)^2)$ per-iteration
 cost and the memory of the design matrix itself become the binding
 constraints, and the standard responses---subsampling, sketching,
 sparse storage---either abandon exactness or retain an $O(N)$ factor
-on the full column dimension.  This paper establishes an exact
-algebraic alternative.  For any exponential dispersion family we prove
-a \emph{tilted-moment identity}: the score and information at an
+on the full column dimension.  I establish an exact algebraic
+alternative.  For any exponential dispersion family I prove a
+\emph{tilted-moment identity}: the score and information at an
 arbitrary parameter value are linear combinations of three low-order
 moments of an exponentially tilted measure on the cells of the
 categorical cross-classification, computable in a single streaming pass
@@ -112,7 +112,7 @@ for $J$ cells, no design matrix is ever formed, and the resulting
 iterates coincide with dense Newton to floating-point reordering
 ($10^{-13}$--$10^{-15}$ in experiments across Poisson, logistic, and
 gamma models): the method is exact, not an approximate-gradient
-scheme.  We derive the identity, characterize precisely why no fixed
+scheme.  I derive the identity, characterize precisely why no fixed
 cell summary can support the likelihood function itself
 (a Laplace-transform uniqueness argument covering the Poisson and
 Bernoulli families), give the streaming algorithm with its
@@ -127,7 +127,7 @@ verified to $5 \times 10^7$ observations and accuracy preserved at
 information-matrix condition numbers up to $10^{17}$.  As a stress
 test, the engine composes with high-dimensional fixed-effect
 absorption---profile updates of absorbed factors alternated with
-tilted-moment Newton steps---for which we supply a unified global
+tilted-moment Newton steps---for which I supply a unified global
 convergence proof; on public data with $3{,}692$ absorbed fixed
 effects the composition reproduces \texttt{pyfixest} to $10^{-9}$ at
 lower cost.
@@ -159,7 +159,7 @@ categorical apparatus---strata, batches, regions, periods, and their
 interactions---whose dummy coding contributes $k \gg p$ columns.  A
 design of $5 \times 10^7$ rows and $500$ dummy columns occupies
 $200$\,GB before the first iteration; the Gram product touches all of
-it, every iteration.  This is the bottleneck the present paper removes.
+it, every iteration.  This is the bottleneck I remove.
 
 The removal is algebraic, not approximate.  Let the categorical
 covariates partition the observations into the $J$ cells of their
@@ -170,19 +170,19 @@ log likelihood collapses onto within-cell aggregates, and estimation on
 the $J$ cells reproduces the microdata maximum-likelihood estimator
 (MLE) exactly---the standard device of grouped Poisson rate modeling
 \citep{frome1983,clayton1993,breslow1987} and, for binary data, of
-grouped binomial fitting.  And the collapse is fragile: we show
+grouped binomial fitting.  And the collapse is fragile: I show
 (Proposition~\ref{prop:sufficiency}) that for $p \ge 1$ \emph{no}
 fixed-dimensional cell summary can support the likelihood
 \emph{function}, because evaluating the within-cell cumulant sum at all
 parameter values determines the Laplace transform of the within-cell
 empirical measure of the continuous covariates---and Laplace transforms
-determine measures.  The argument is not Poisson folklore: we prove it
+determine measures.  The argument is not Poisson folklore: I prove it
 for the Poisson and Bernoulli families by one uniqueness argument, so
 the impossibility is a property of the exponential family, not of a
 particular application.
 
-The contribution of the paper is the observation that estimation does
-not require the likelihood function; it requires the gradient and
+My starting point is the observation that estimation does not require
+the likelihood function; it requires the gradient and
 curvature \emph{at the current iterate}, and these admit an exact
 finite representation that the function itself does not.
 Theorem~\ref{thm:tilted}---the tilted-moment identity---states that for
@@ -203,7 +203,7 @@ because it attempts likelihood exactness, which
 Proposition~\ref{prop:sufficiency} forbids; the tilted collapse
 succeeds because it needs only score exactness, iterate by iterate.
 
-The identity converts directly into complexity, which is the paper's
+The identity converts directly into complexity, which I record as the
 scaling proposition (Corollary~\ref{cor:complexity}): one Newton or
 Fisher-scoring iteration costs a single streaming
 $O(N(p^2 + p + 1))$ pass over the microdata---the continuous columns
@@ -223,8 +223,8 @@ inferential apparatus---observed information, sandwich, and
 cluster-robust covariance matrices, all accumulated cellwise in the
 same pass \citep{huber1967,white1980,liang1986}.
 
-The second half of the paper develops the identity into a solver and
-measures it.  Section~\ref{sec:algorithms} gives the streaming
+In the second half I develop the identity into a solver and measure
+it.  Section~\ref{sec:algorithms} gives the streaming
 algorithm and its numerical envelope: log-domain likelihood kernels,
 backtracking line search, rank-deficiency and separation handling
 \citep{wedderburn1976,albert1984}, exact cell-accumulated covariance
@@ -257,7 +257,7 @@ method of alternating projections of von Neumann and
 \citet{gaure2013}---and the combined nonlinear GLM cycle has long been
 validated by simulation \citep{guimaraes2010,berge2018,correia2020};
 what has been missing is a single formal theorem for the combined
-inner--outer iteration, which we state as Theorem~\ref{thm:global-main}
+inner--outer iteration, which I state as Theorem~\ref{thm:global-main}
 (proof in the supplement) and verify against \texttt{pyfixest} on real
 data with $3{,}692$ absorbed effects to $10^{-9}$.  The supplement
 develops the associated rate and asymptotic theory; in the main text
@@ -344,7 +344,7 @@ with $b : \Theta \to \R$ strictly convex and three times continuously
 differentiable on the open canonical parameter space $\Theta \subseteq \R$,
 and dispersion $\phi > 0$
 \citep{nelder1972,jorgensen1987,mccullagh1989}.  The mean and variance
-are $\mu_i = b'(\theta_i)$ and $\Var(y_i) = \phi\, b''(\theta_i)$.  We
+are $\mu_i = b'(\theta_i)$ and $\Var(y_i) = \phi\, b''(\theta_i)$.  I
 model the linear predictor
 \begin{equation}\label{eq:linpred}
 \eta_i = \bgamma' \bx_i + \bdelta' \bw_{j(i)} + o_i,
@@ -370,7 +370,7 @@ log likelihood is
 Because \eqref{eq:loglik} is a sum of concave functions of the linear
 predictor, $\ell$ is concave on $\R^q$, strictly so on the quotient of
 $\R^q$ by the null space of the stacked design
-$\ba_i = (\bx_i', \bw_{j(i)}')'$.  We write
+$\ba_i = (\bx_i', \bw_{j(i)}')'$.  Write
 $\bU(\btheta) = \nabla \ell$ for the score,
 $\bH(\btheta) = -\nabla^2 \ell$ for the negative Hessian, and note that
 for canonical links $\bH$ equals the Fisher information
@@ -392,7 +392,7 @@ and cell size---grouped binomial fitting.  In both cases estimation on
 the $J$ cells is exact, at $O(Jq^2)$ per iteration.  The following
 proposition records why no analogous finite collapse survives the
 introduction of a continuous covariate, and in what precise sense; the
-argument is a property of the family's cumulant function, and we give it
+argument is a property of the family's cumulant function, and I give it
 in one form that covers both running examples.  Define the within-cell
 \emph{weighted covariate measure}
 $\nu_j = \sum_{i \in j} e^{o_i} \delta_{\bx_i}$ on $\R^p$ (for Poisson,
@@ -651,7 +651,7 @@ these links; that requires the log-concavity condition made precise for
 the absorbed-factor problem in Supplement Theorem~S1, which holds for
 gamma--log and probit but not for every link.  Observed information
 (true Newton) under a non-canonical link adds a term in
-$b'''$/\,$g''$ that is equally cell-decomposable but that we do not need,
+$b'''$/\,$g''$ that is equally cell-decomposable but unnecessary here,
 since Fisher scoring already delivers the MLE at the same per-iteration
 cost.
 
@@ -798,7 +798,7 @@ Section~\ref{sec:memory} argues the tilted pass admits but does not yet
 use.  The dense-side factorizations and the pseudoinverse fallback follow
 standard practice \citep{golub2013}.  The exact hardware affects the
 constants, not the ratios or the $O(\cdot)$ trends, which are the
-paper's claims; every figure regenerates from the scripts in the code
+claims I make; every figure regenerates from the scripts in the code
 supplement.
 
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
@@ -985,7 +985,7 @@ in a fresh process so that peak resident set size (RSS) isolates one
 method's footprint; times are medians over repeated fits and iteration
 counts are reported alongside.  For the non-absorbed model
 (Table~\ref{tab:sim1b}, $N = 200{,}000$, $J = 200$, $p = 2$) the
-competitors are our own dense Newton; \texttt{statsmodels}
+competitors are my own dense Newton; \texttt{statsmodels}
 \citep{seabold2010}, the standard general-purpose Python GLM (dense
 IRLS); a sparse-design IRLS holding the design (continuous columns plus
 cell dummies) in compressed-sparse-row form and forming and solving the
@@ -1191,7 +1191,7 @@ information-matrix condition number $\sim\!10^{17}$); extreme offsets
 spanning $30$ log units; linear predictors driven to $\pm 40$
 (over/underflow territory); Zipf($1.3$)-unbalanced cells; and an
 informative covariate carried on a $10^8$ pedestal (catastrophic
-cancellation in any naive sum of squares).  For each we report the
+cancellation in any naive sum of squares).  For each I report the
 condition number, the deviation from dense Newton on the same data, and
 the deviation from a cancellation-free reference---the mathematically
 identical model with the continuous columns standardized, then mapped
@@ -1208,7 +1208,7 @@ reference (a conditioning diagnostic).  The tilted fit matches dense and
 the well-conditioned reference throughout, except under a $10^8$
 pedestal, where dense diverges \emph{identically} (catastrophic
 cancellation shared by every double-precision solver) and centering the
-covariate---the one-line standardization the paper recommends---restores
+covariate---the one-line standardization I recommend---restores
 full accuracy.}
 \label{tab:stability}
 \small
@@ -1236,9 +1236,9 @@ accumulation neither introduces nor amplifies ill-conditioning.  The one
 genuine failure---an informative signal on a $10^8$ pedestal---is a
 catastrophic-cancellation hazard of the raw parametrization, not of the
 tilted pass: dense Newton diverges by the same $10^7$, and standardizing
-the covariate (which the reference implementation offers and the paper
-recommends as routine preprocessing, following standard practice;
-\citealp{higham2002}) returns the fit to full accuracy.  We flag this
+the covariate (which the reference implementation offers and I
+recommend as routine preprocessing, following standard practice;
+\citealp{higham2002}) returns the fit to full accuracy.  I flag this
 explicitly rather than suppress it: no double-precision GLM solver
 survives a covariate whose signal sits $16$ digits below its magnitude,
 and the honest remedy is to standardize, not to claim immunity.
@@ -1253,7 +1253,7 @@ The first application is to public data, chosen so that every number can
 be reproduced from a fresh download: the \texttt{nycflights13} data set
 \citep{wickham2018}---all $336{,}776$ flights departing New York City's
 three airports in 2013, from the U.S.\ Bureau of Transportation
-Statistics.  We model the probability of a late arrival (arrival delay
+Statistics.  I model the probability of a late arrival (arrival delay
 $\ge 15$ minutes, the FAA on-time criterion; $24.5\%$ of the $327{,}346$
 flights with an observed delay) by logistic regression with a cell
 structure of carrier $\times$ origin $\times$ destination $\times$
@@ -1286,7 +1286,7 @@ $2.3 \times 10^{-13}$, at $19$ seconds versus $1.3$: the same estimator,
 $15\times$ cheaper, with no design matrix in memory.
 
 A second model on the same data exercises the high-dimensional
-absorption path against \texttt{pyfixest}.  We now absorb
+absorption path against \texttt{pyfixest}.  I now absorb
 \emph{aircraft}---the $3{,}692$ tail numbers that survive the separation
 drop---crossed with a twelve-level month cell structure (an aircraft
 flies across months, so the two factors are identified), keeping the two
@@ -1294,8 +1294,8 @@ continuous covariates.  The tilted logistic fit with absorbed aircraft
 converges in $31$ iterations and $1.5$ seconds; \texttt{pyfixest}'s
 \texttt{feglm} on the same specification takes $2.1$ seconds, and the two
 agree on the continuous coefficients to $1.2 \times 10^{-9}$ (departure
-hour $0.103994$ from both).  This is the paper's most stringent external
-check: on real high-dimensional data, the tilted absorption reproduces
+hour $0.103994$ from both).  This is the most stringent external check
+I report: on real high-dimensional data, the tilted absorption reproduces
 the estimate of a mature, purpose-built HDFE--GLM package to nine digits,
 at comparable speed, while also carrying the cell-structured part of the
 model that \texttt{pyfixest} treats as ordinary covariates
@@ -1354,7 +1354,7 @@ allocate a terabyte-scale matrix before its first iteration.
 \section{Discussion}\label{sec:discussion}
 % =========================================================================
 
-The paper establishes a single algorithmic result and measures its
+I have established a single algorithmic result and measured its
 consequences.  For any exponential dispersion family whose design mixes
 cell-constant categorical structure with continuous covariates, the
 score vector and information matrix at an arbitrary parameter
@@ -1387,7 +1387,7 @@ the unified guarantee for the combined nonlinear cycle
 from pairwise cross-tabulations, asymptotics up to the proportional
 regime $J/N \to c$, and Firth and penalized variants computed inside
 the same pass.  These results are kept out of the main text so that the
-tilting engine stands as the paper's subject.
+tilting engine stands alone as the subject.
 
 \paragraph{Software.}  All results regenerate from a self-contained
 open-source Python/NumPy reference implementation
