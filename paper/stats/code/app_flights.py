@@ -173,8 +173,90 @@ def main():
     log(f"statsmodels GLM: {t_sm:.2f}s; max |tilted - statsmodels| "
         f"= {dev:.2e}; speed ratio {t_sm/t_tilt:.0f}x")
 
+    hdfe_block(log)
+
     with open("output/app_flights.txt", "w") as fh:
         fh.write("\n".join(out) + "\n")
+
+
+def hdfe_block(log):
+    """High-dimensional real-data example: absorb aircraft (tail number,
+    ~3,700 levels), crossed with a month cell structure, and benchmark
+    against pyfixest (the fixest alternating-projections algorithm)."""
+    import time
+    log("")
+    log("--- High-dimensional fixed effects: absorbing aircraft ---")
+    _, _, _, month, hour, dist, late = load()
+    tail = _tail_column()
+    keep0 = (tail != "") & (tail != "NA")
+    month, hour, dist, late, tail = (v[keep0] for v in
+                                     (month, hour, dist, late, tail))
+    # month (cells) and aircraft (absorbed) are crossed -- an aircraft
+    # flies across months -- so both are identified; drop separated levels
+    # (all-late / all-on-time send a fixed effect to +-infinity)
+    for _ in range(30):
+        changed = False
+        for fac in (month, tail):
+            lv, iv = codes(fac)
+            tot = np.bincount(iv)
+            lat = np.bincount(iv, weights=late)
+            bad = (lat == 0) | (lat == tot)
+            if bad.any():
+                keep = ~bad[iv]
+                month, hour, dist, late, tail = (v[keep] for v in
+                                                 (month, hour, dist,
+                                                  late, tail))
+                changed = True
+        if not changed:
+            break
+    um, im = codes(month)
+    ut, it_ = codes(tail)
+    N = len(late)
+    from tilted_glm import CellDesign, fit_tilted, make_cell_dummies
+    W = make_cell_dummies(im, len(um))            # month cells (12)
+    X = np.column_stack([hour - hour.mean(),
+                         (np.log(dist) - np.log(dist).mean())
+                         / np.log(dist).std()])
+    design = CellDesign(cells=im, W=W, X=X, offset=np.zeros(N))
+    log(f"N={N:,} flights; absorbing {len(ut):,} aircraft (tail numbers) "
+        f"crossed with {len(um)} month cells; p=2 continuous covariates")
+    t0 = time.perf_counter()
+    fit = fit_tilted(late, design, family="binomial", absorb=[it_],
+                     tol=1e-9, maxiter=200)
+    t_tilt = time.perf_counter() - t0
+    log(f"tilted (absorb aircraft): {t_tilt:.2f}s, {fit.iterations} "
+        f"iterations, converged={fit.converged}; "
+        f"dep hour {fit.gamma[0]:+.6f}, log distance {fit.gamma[1]:+.6f}")
+
+    try:
+        import pandas as pd
+        import pyfixest as pf
+        df = pd.DataFrame({"late": late, "hour": X[:, 0], "logdist": X[:, 1],
+                           "month": im, "tail": it_})
+        t0 = time.perf_counter()
+        r = pf.feglm("late ~ hour + logdist | month + tail", data=df,
+                     family="logit")
+        t_pf = time.perf_counter() - t0
+        cf = r.coef()
+        dev = max(abs(cf["hour"] - fit.gamma[0]),
+                  abs(cf["logdist"] - fit.gamma[1]))
+        log(f"pyfixest feglm (| month + tail): {t_pf:.2f}s; "
+            f"dep hour {cf['hour']:+.6f}, log distance {cf['logdist']:+.6f}; "
+            f"max |tilted - pyfixest| = {dev:.2e}")
+    except Exception as e:  # pyfixest optional
+        log(f"pyfixest comparison skipped: {repr(e)[:120]}")
+
+
+def _tail_column():
+    tail = []
+    with open(DATA) as fh:
+        rd = csv.DictReader(fh)
+        for row in rd:
+            if row["arr_delay"] in ("", "NA") or row["distance"] in ("",
+                                                                     "NA"):
+                continue
+            tail.append(row["tailnum"])
+    return np.array(tail)
 
 
 if __name__ == "__main__":

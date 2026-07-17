@@ -15,6 +15,7 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{bm}
 \usepackage{booktabs}
+\usepackage{multirow}
 \usepackage{microtype}
 \usepackage[margin=1.15in]{geometry}
 \usepackage[round,authoryear]{natbib}
@@ -95,32 +96,39 @@ When every covariate of a generalized linear model is categorical, the
 log likelihood collapses onto within-cell aggregates of the
 cross-classification, and estimation on the $J$ cells reproduces the
 microdata maximum-likelihood estimator at a fraction of the cost.  A
-single continuous covariate destroys this collapse: we show that
-computing the likelihood then requires, in effect, the entire
-within-cell empirical distribution of the continuous covariates, so no
-fixed-dimensional cell summary suffices.  The contribution of this paper
-is that a moving summary does: for exponential dispersion families, the
-exact score vector and Fisher information matrix at any parameter value
-are linear combinations of three low-order moments of an
-\emph{exponentially tilted} within-cell measure---for the Poisson
-family, an Esscher transform of the within-cell exposure measure.
+a single continuous covariate breaks it: we show that a
+fixed-dimensional cell summary can no longer reproduce the likelihood
+\emph{function}, because doing so would require the entire within-cell
+empirical distribution of the continuous covariates.  The contribution of
+this paper is a distinction between likelihood exactness, which is
+impossible, and \emph{score} exactness, which is not: a Newton or
+Fisher-scoring step needs only the gradient and curvature at the current
+iterate, and for exponential dispersion families these are, exactly,
+linear combinations of three low-order moments of an \emph{exponentially
+tilted} within-cell measure---for the Poisson family, an Esscher
+transform of the within-cell exposure measure---that one pass computes.
 Consequently every Newton or Fisher-scoring iteration is computable from
 one streaming pass over the microdata at $O(Np_c^2)$ cost, with $p_c$
 the number of continuous covariates only, followed by algebra on the
-cells; the resulting iterates are algebraically \emph{identical} to
-full-design iterations, not approximations to them.  We give the
-streaming algorithm, its complexity and numerical properties, and exact
-cell-accumulated robust and cluster-robust covariance estimators.
-Experiments verify iterate-for-iterate agreement with dense Newton at
-$10^{-13}$--$10^{-15}$ across Poisson, logistic, and gamma models while
-running one to two orders of magnitude faster than dense and
-general-purpose implementations and several times faster than a
-sparse-design IRLS, with exactness unaffected by severe cell imbalance
-or rare events.  Two applications---a logistic on-time-performance model
-for the 336{,}776 flights of the public \texttt{nycflights13} data, and
-a register-scale synthetic epidemiology study with five million
-person-year episodes and $10{,}000$ absorbed municipality--year
-effects---fit with inference in seconds.  An online supplement develops
+cells; the resulting iterates coincide with full-design Newton up to
+floating-point reordering, so the method is exact rather than an
+approximation.  We give the streaming algorithm, its complexity, memory,
+and numerical-stability properties, and exact cell-accumulated robust and
+cluster-robust covariance estimators.  Experiments confirm agreement with
+dense Newton to $10^{-13}$--$10^{-15}$ across Poisson, logistic, and gamma
+models, and benchmark against the implementations practitioners use:
+one to two orders of magnitude faster and $12$--$50\times$ lighter in
+memory than \texttt{statsmodels}, faster than \texttt{glum} and a
+sparse-design IRLS, and---for absorbed high-dimensional fixed effects---%
+about twice as fast and several times lighter than \texttt{pyfixest}
+while returning the exact estimate, with $O(N)$ time and memory verified
+to $5\times10^7$ records and accuracy preserved across a battery of
+ill-conditioned designs.  Two applications on public and register-scale
+data---a logistic on-time model for the $336{,}776$ flights of
+\texttt{nycflights13}, agreeing with \texttt{pyfixest} to $10^{-9}$ once
+$3{,}692$ aircraft are absorbed, and a five-million-episode epidemiology
+study with $10{,}000$ absorbed municipality--year effects---fit with
+inference in seconds.  An online supplement develops
 companion theory: global convergence and sharp local rates for the
 nonlinear alternating-projections absorption of high-dimensional fixed
 effects, asymptotics up to the proportional regime $J/N \to c$, and
@@ -198,16 +206,25 @@ Esscher transform of the within-cell empirical exposure measure,
 connecting the construction to classical tilting ideas in saddlepoint
 approximation and empirical likelihood
 \citep{esscher1932,daniels1954,efron1981,jensen1995,kitamura1997}.  The
-tilt is the right \emph{dynamic} object: it changes with the iterate,
-which is exactly why a fixed collapse fails and a per-iteration one
-succeeds.  Corollary~\ref{cor:complexity} converts the identity into
+conceptual pivot is a distinction between \emph{likelihood exactness}
+and \emph{score exactness}.  Evaluating the likelihood function
+everywhere would require the full within-cell distribution
+(Proposition~\ref{prop:sufficiency}); but a Newton or Fisher-scoring
+step never needs the function everywhere---it needs the gradient and
+curvature at one point, the current iterate.  Those are score
+\emph{exact} from a fixed-dimensional summary even though the likelihood
+is not, and the summary that delivers them is the tilt, which moves with
+the iterate.  A fixed collapse fails because it tries to be likelihood
+exact; the tilted collapse succeeds because it only needs to be score
+exact, iterate by iterate.  Corollary~\ref{cor:complexity} converts the identity into
 complexity: each Newton iteration costs one streaming $O(N(p^2+p))$
 pass over the microdata---$p$ the number of continuous columns
 only---plus $O(J(k^2+kp))$ cell algebra, against $O(N(p+k)^2)$ for the
 full design, a saving that grows quadratically in the richness $k$ of
-the categorical structure.  Because the identity is exact, the
-accelerated iterates are \emph{identical} to full-design Newton---not
-close, identical---which Section~\ref{sec:sim-validation} verifies at
+the categorical structure.  Because the identity is exact rather than a linearization, the
+accelerated iterates coincide with full-design Newton up to
+floating-point reordering, which Section~\ref{sec:sim-validation}
+verifies at
 the $10^{-13}$--$10^{-15}$ level, iterate by iterate, across Poisson,
 logistic, and gamma models.  Fisher scoring under non-canonical links
 has the same structure (Proposition~\ref{prop:noncanonical}); for the
@@ -226,36 +243,79 @@ alternating-projections cycle, its local rates for two and for three or
 more factors, and high-dimensional asymptotics up to one fixed effect
 per two observations---is developed in the online supplement.
 Section~\ref{sec:simulations} contains the experiments: iterate-level
-exactness and per-iteration cost against dense Newton
-(Section~\ref{sec:sim-validation}); total-time benchmarks against
-\texttt{statsmodels} (the standard general-purpose Python GLM) and
-against a sparse-design IRLS, the natural ``just use sparse matrices''
-alternative (Section~\ref{sec:sim-baselines}); and sensitivity to
-severe cell imbalance and rare events
-(Section~\ref{sec:sim-sensitivity}).  Section~\ref{sec:applications}
-applies the method twice: to the public \texttt{nycflights13} data
-(a logistic on-time-performance model with a
-carrier--origin--destination--month cell structure, verified
-coefficient-for-coefficient against \texttt{statsmodels} at a tenth of
-its cost), and to a fully reproducible register-scale synthetic study
-(five million person-year episodes, $10{,}000$ absorbed
-municipality--year effects, cluster-robust inference, seconds on one
-core).  Section~\ref{sec:discussion} summarizes and points to the
+exactness against dense Newton (Section~\ref{sec:sim-validation});
+time-and-memory benchmarks against the implementations practitioners
+use---\texttt{statsmodels}, a sparse-design IRLS, and \texttt{glum}
+(QuantCo's optimized categorical-aware GLM) for the non-absorbed model
+(Section~\ref{sec:sim-baselines}), and \texttt{pyfixest} (the
+\texttt{fixest} algorithm) for the absorbed-factor path
+(Section~\ref{sec:sim-hdfe}); $O(N)$ time and memory scaling to
+$5\times10^7$ records (Section~\ref{sec:sim-scaling}); and a numerical
+stability battery (Section~\ref{sec:sim-stability}).
+Section~\ref{sec:applications} applies the method twice: to the public
+\texttt{nycflights13} data---a logistic on-time-performance model
+verified against \texttt{statsmodels} to $10^{-13}$ and, with $3{,}692$
+absorbed aircraft, against \texttt{pyfixest} to $10^{-9}$---and to a
+fully reproducible register-scale synthetic study (five million
+person-year episodes, $10{,}000$ absorbed municipality--year effects,
+cluster-robust inference, seconds on one core).  Section~\ref{sec:discussion} summarizes and points to the
 supplement's theory.  Proofs of the main-paper results are in the
 appendix; every number regenerates from short scripts included with the
 manuscript.
 
-Relative to the literature, the closest computational ideas are the
-collapsed sufficient statistics of classical log-linear rate modeling
-\citep{holford1980,clayton1993}, which the tilted moments generalize
-from ``all categorical'' to ``categorical plus continuous''; and the
-alternating-projections HDFE stack
-\citep{guimaraes2010,gaure2013,correia2016,correia2020,berge2018},
-which removes dummy factors but streams the full non-absorbed design
-through every IRLS step---the two devices are complementary, and
-Section~\ref{sec:absorb-impl} combines them.  The framework is
-implemented in the Stata command \texttt{stpois} for the Poisson
-event-history case and in an open-source Python reference
+\paragraph{Relation to existing computational methods.}
+The idea sits at the intersection of several literatures, and its
+novelty is best stated by contrast with each.  \emph{Collapsed
+sufficient statistics} for log-linear rate models
+\citep{holford1980,clayton1993} are the special case $p = 0$; the tilted
+moments extend the exact collapse from ``all categorical'' to
+``categorical plus continuous,'' which is precisely the case the
+classical collapse cannot handle (Proposition~\ref{prop:sufficiency}).
+\emph{Matrix-free and Hessian-free Newton methods}
+\citep{pearlmutter1994,martens2010,nocedal2006} avoid forming the Hessian
+by supplying only Hessian--vector products to an iterative linear solver;
+they reduce memory but still stream the full design through every
+product and solve the $q$-dimensional system iteratively and
+approximately.  The tilted representation is different in kind: it forms
+the \emph{exact} $(p+k)$-dimensional Hessian and score in closed form
+from cell moments, so the inner solve is a small direct factorization,
+not a truncated conjugate-gradient loop, and the reduction is in the
+dimension of the linear algebra, not merely in whether the matrix is
+stored.  \emph{Grouped or blockwise IRLS} and stochastic second-order
+methods \citep{byrd2011} exploit structure in the working weights or
+subsample the Hessian; they are approximate where the tilted step is
+exact, and they do not use the key fact here---that within a cell the
+information contribution is a tilted moment, computable without revisiting
+the cell.  \emph{Automatic differentiation}
+\citep{baydin2018} would compute the same score and Hessian but by
+propagating through the $N$-row design, at $O(N(p+k)^2)$; it mechanizes
+the derivative, whereas the contribution here is the analytic identity
+that makes the derivative a cell-level object.  \emph{Sparse-design}
+GLM solvers and out-of-core packages
+(\texttt{glum}, \citealp{tabmat2021}; \texttt{biglm},
+\citealp{lumley2011}) store the dummy block sparsely; as
+Section~\ref{sec:sim-baselines} shows, this is the strongest general
+competitor, but the tilted pass never forms a design at all and its cost
+grows only in the continuous dimension.  \emph{Distributed and
+communication-avoiding} optimization
+\citep{zhang2013,jaggi2014} targets the orthogonal axis of splitting one
+fit across machines; the tilted pass is a single-machine, single-pass
+reorganization that such schemes could adopt per shard, since its
+accumulators are additive across data partitions.  Finally, the
+\emph{alternating-projections HDFE} stack
+\citep{guimaraes2010,gaure2013,correia2016,correia2020,berge2018}
+removes dummy factors by demeaning but streams the full non-absorbed
+design through every IRLS step; the two devices are complementary, and
+Section~\ref{sec:absorb-impl} combines them, with the tilted pass
+handling the cell-structured part that HDFE tools treat as ordinary
+covariates.  In short, the novelty is neither ``a sufficient statistic
+exists'' nor ``regroup the sums'': it is the exact, iterate-dependent
+tilted-moment identity (Theorem~\ref{thm:tilted}) that turns the score
+and the full Hessian of a mixed categorical--continuous GLM into a
+one-pass cell computation, together with its consequences for scale.
+
+The framework is implemented in the Stata command \texttt{stpois} for
+the Poisson event-history case and in an open-source Python reference
 implementation used for all experiments here.
 
 % =========================================================================
@@ -498,34 +558,64 @@ memory-bandwidth-bound, so measured speedups (Section~\ref{sec:sim-validation})
 are large but smaller than the FLOP ratio.  Second, the accumulations are
 plain segmented sums---\texttt{bincount} operations---so they
 parallelize and stream trivially; no $N \times q$ design matrix is ever
-formed, which converts a memory-infeasible problem
-(Section~\ref{sec:app-register}) into an in-cache one.
+formed, which brings a problem whose dense design exceeds working memory
+(Section~\ref{sec:app-register}) within a laptop's footprint.
 
 \subsection{Non-canonical links}\label{sec:noncanonical}
 
-For a non-canonical, three-times-differentiable, strictly monotone link
-$g$ with $\mu_i = g^{-1}(\eta_i)$, define the usual Fisher weight and
+So far the link has been canonical, $\theta_i = \eta_i$, where the
+Newton weight $b''(\eta_i)$ and the tilt coincide.  The construction does
+not depend on this.  For a general link $g$ with $\mu_i = g^{-1}(\eta_i)$
+the maximum-likelihood score for a linear exponential family is
+$\sum_i (y_i - \mu_i)\,\frac{\partial\mu_i/\partial\eta_i}{V(\mu_i)}\,
+\ba_i$ and the expected (Fisher) information is
+$\sum_i \omega_i \ba_i\ba_i'$, with the standard IRLS weight and
 working residual
-\[
+\begin{equation}\label{eq:fisher-weight}
 \omega_i = \frac{1}{V(\mu_i)\, g'(\mu_i)^2}, \qquad
-r_i = (y_i - \mu_i)\, g'(\mu_i)\,\omega_i ,
-\]
-with $V$ the variance function.  Fisher scoring replaces
-$(b'(\eta_i), b''(\eta_i))$ by $(\mu_i, \omega_i)$ and the raw residual
-by $r_i$.
+r_i = (y_i - \mu_i)\, g'(\mu_i)\,\omega_i
+\end{equation}
+\citep[Sec.~2.5]{mccullagh1989}, where $V$ is the variance function and
+$g'(\mu) = \partial\eta/\partial\mu$.  Comparing with
+Theorem~\ref{thm:tilted}, the only change is that the pair
+$(b'(\eta_i), b''(\eta_i)) = (\mu_i, \omega_i^{\mathrm{can}})$ of the
+canonical case is replaced by $(\mu_i, \omega_i)$ and the raw residual
+$y_i - \mu_i$ by $r_i$: the tilt is now weighted by the Fisher weight
+\eqref{eq:fisher-weight}, and everything downstream---the cell sums, the
+Gram matrix, the block assembly---is unchanged.
 
 \begin{proposition}[Tilted Fisher scoring]\label{prop:noncanonical}
-With $\omega_i$ and $r_i$ as above, the expected-information scoring step
-admits the representation of Theorem~\ref{thm:tilted} with
-$M_j^{(0)}, \mathbf{m}_j, \bQ$ built from $\omega_i$ and with $R_j =
-\sum_{i \in j} r_i$; the fixed points of the resulting iteration are
-exactly the roots of the ML score equations, and
-Corollary~\ref{cor:complexity} applies verbatim.  For the gamma family
-with log link, $V(\mu) = \mu^2$ and $g'(\mu) = 1/\mu$ give
-$\omega_i \equiv 1$: the tilted moments reduce to \emph{untilted} cell
-moments of the covariates, fixed across iterations, so after the first
-pass each subsequent iteration costs $O(N p) + O(Jk^2)$ only.
+With $\omega_i$ and $r_i$ as in \eqref{eq:fisher-weight}, the
+expected-information scoring step admits the representation of
+Theorem~\ref{thm:tilted}, with $M_j^{(0)}, \mathbf{m}_j, \bQ$ built from
+$\omega_i$ and $R_j = \sum_{i \in j} r_i$; the fixed points of the
+iteration are exactly the roots of the ML score equations, and
+Corollary~\ref{cor:complexity} applies verbatim.
 \end{proposition}
+
+Two points of intuition and scope.  First, whether the moments must be
+\emph{re-accumulated} each iteration depends on how $\omega_i$ depends on
+$\eta_i$.  For canonical links $\omega_i = b''(\eta_i)$ moves with the
+iterate, so a fresh pass is needed---which is the pass the algorithm
+takes anyway.  The gamma family with log link is the striking exception:
+$V(\mu) = \mu^2$ and $g'(\mu) = 1/\mu$ give $\omega_i \equiv 1$, so the
+Fisher weight is constant, the ``tilted'' moments are ordinary
+exposure-weighted cell moments \emph{fixed across iterations}, and after
+one pass each subsequent iteration costs $O(Np) + O(Jk^2)$---the
+acceleration is at its most extreme precisely where the link is
+non-canonical.  Second, the representation needs only that
+$\omega_i > 0$ and $V, g$ be smooth on the range of the fitted means, so
+it covers the standard non-canonical GLMs---gamma or inverse-Gaussian
+with log link, binomial with probit or complementary log-log, Poisson
+with identity or square-root link---as expected-information scoring.  It
+does not by itself guarantee that scoring \emph{converges globally} for
+these links; that requires the log-concavity condition made precise for
+the absorbed-factor problem in Supplement Theorem~S1, which holds for
+gamma--log and probit but not for every link.  Observed information
+(true Newton) under a non-canonical link adds a term in
+$b'''$/\,$g''$ that is equally cell-decomposable but that we do not need,
+since Fisher scoring already delivers the MLE at the same per-iteration
+cost.
 
 
 \subsection{Families in scope}\label{sec:families-main}
@@ -628,10 +718,42 @@ across threads with per-thread partial moments and a $J k$-sized
 reduction, with no atomics on the hot path---the same structure GPU
 segmented-reduction primitives expect.  The single-threaded NumPy
 reference implementation uses none of (i)--(iii) beyond what
-\texttt{bincount} provides, so the reported $12\times$--$117\times$
-should be read as a floor; the FLOP ratio governs how the comparison
-scales with $(p, k)$, and the bandwidth analysis governs the attainable
-constant.
+\texttt{bincount} provides, so the reported speedups should be read as a
+floor; the FLOP ratio governs how the comparison scales with $(p, k)$,
+and the bandwidth analysis governs the attainable constant.
+
+The \emph{memory} footprint is where the reorganization is most
+decisive, and it is easy to state exactly.  The tilted pass holds the
+loaded columns, $O(N(p+1))$ doubles, plus the accumulators: $J$ cell
+scalars, a $J \times p$ moment array, and the $(p+k) \times (p+k)$
+information---$O(N(p+1)) + O(J(k+p) + (p+k)^2)$ in total, with no term in
+$Nk$.  A dense design is $N(p+k)$ doubles, and a general-purpose IRLS
+adds working copies on top; the measured peak resident sets bear this out
+(Tables~\ref{tab:sim1b} and~\ref{tab:scaling}): $\sim\!80$\,MB for the
+tilted fit against $\sim\!1$\,GB dense and $\sim\!4$\,GB for
+\texttt{statsmodels} at $N = 2\times10^5$, widening to $3.8$\,GB versus a
+$200$\,GB dense design at $N = 5\times10^7$.  Because peak memory, not
+FLOPs, is what makes a register-scale fit feasible or not, this is the
+practically load-bearing comparison.  Preprocessing---the one-time sort
+or hash that builds the cell identifiers and, for absorbed factors, the
+group indices---is $O(N \log N)$ or $O(N)$ and is shared across all
+models fitted on the same cells (a sweep of specifications, a
+bootstrap, a cross-validation), so it is reported separately from the
+per-iteration cost throughout and is amortized whenever more than one
+model is fitted on a design.
+
+\paragraph{Reproducibility of the timings.}  All wall-clock and
+peak-memory figures are measured on a single core of a
+commodity x86-64 workstation (AVX2, $32$\,KiB L1 / $1$\,MiB L2 per core,
+shared L3), with each competitor fitted in a fresh process so that peak
+resident set isolates its footprint; times are medians over repeated
+fits.  The reference implementation is pure NumPy/SciPy on the system
+BLAS, single-threaded (BLAS threads pinned to one) so that the comparison
+reflects algorithmic organization rather than parallel speedup, which
+Section~\ref{sec:memory} argues the tilted pass admits but does not yet
+use.  The exact hardware affects the constants, not the ratios or the
+$O(\cdot)$ trends, which are the paper's claims; every figure regenerates
+from the scripts in the code supplement.
 
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
 
@@ -664,27 +786,50 @@ effects, with the inner cycle re-solved at every trial point of the line
 search (Algorithm~S1 of the supplement).  Each inner sweep is $O(N)$;
 with a single absorbed factor the inner solve is exact in one sweep.
 
-The theory of this composition is the subject of the online supplement,
-and we summarize what is proved there.  Theorem~S1 establishes
-\emph{global convergence} of the nonlinear cycle to the MLE whenever the
-MLE exists, for canonical and more generally log-concave links---a
-guarantee previously absent from the applied HDFE--GLM literature.
-Theorems~S2--S3 give the \emph{local rate}: for two absorbed factors the
-per-sweep contraction equals $\cos^2$ of the Friedrichs angle between
-the weighted factor subspaces---equivalently the squared second singular
-value of a normalized weighted cross-tabulation---and for $G \ge 3$
-factors the exact rate is the spectral radius of a level-space sweep
-operator determined by the pairwise cross-tabulations alone, computable
-by power iteration before touching the microdata, with an angle-based
-product certificate; observed contraction factors match these
-predictions to three decimals.  Theorems~S4--S6 give asymptotics for the
-estimator (which is the MLE, so classical theory applies at fixed
-dimension) up to the proportional regime of one Poisson fixed effect per
-bounded-size cell, $J/N \to c \in (0,1)$, where profiling coincides with
-conditioning and inference is unbiased with valid cell-clustered
-standard errors.  Separated absorbed groups (no events) are detected and
-dropped a priori, exactly as in \citet{correia2020};
-Section~\ref{sec:app-register} exercises the full composition at scale.
+This inner--outer scheme is exactly the algorithm used across the
+HDFE--GLM software ecosystem, and it is the one for which the applied
+literature has recorded no convergence guarantee.  Because the algorithm
+is central to the absorbed-factor results of this paper, we state the
+guarantee here and defer its proof, and the finer rate and asymptotic
+theory, to the online supplement.
+
+\begin{theorem}[Global convergence of the absorbed-factor iteration]
+\label{thm:global-main}
+Suppose the link is canonical, or more generally log-concave in the sense
+that each per-observation contribution $\eta \mapsto \ell_i(\eta)$ is
+strictly concave; suppose the maximum-likelihood estimate exists (no
+separation, which the drop rule below enforces for the absorbed blocks);
+and suppose the non-absorbed information block is nonsingular on the
+initial superlevel set.  Then the iterates of the inner--outer scheme
+above---closed-form or exact one-dimensional block maximizations of the
+absorbed effects, alternated with Armijo-damped tilted-moment
+Newton/scoring steps for $(\bgamma,\bdelta)$---increase the likelihood
+monotonically and converge to the maximum-likelihood estimate, from any
+starting value, for any (essentially) cyclic ordering of the blocks.
+\end{theorem}
+
+\noindent The proof (Supplement Theorem~S1) is a block-coordinate-ascent
+argument on the concave profile objective, handling the parameter
+space's flat directions and the inexact (damped-Newton) outer block; the
+log-concave-link generality covers gamma--log and probit as well as the
+canonical families.  The supplement further gives the \emph{local rate}
+(Theorems~S2--S3): for two absorbed factors the per-sweep contraction
+equals $\cos^2$ of the Friedrichs angle between the weighted factor
+subspaces---the squared second singular value of a normalized weighted
+cross-tabulation---and for $G \ge 3$ it is the spectral radius of a
+level-space sweep operator built from the pairwise cross-tabulations
+alone, computable by power iteration before touching the microdata, with
+an angle-based product certificate; observed contraction factors match
+these predictions to three decimals.  Because the estimator \emph{is} the
+MLE, its asymptotics are the MLE's: classical at fixed dimension, and,
+in the proportional regime of one Poisson fixed effect per bounded-size
+cell ($J/N \to c \in (0,1)$), unbiased with valid cell-clustered standard
+errors, because profiling then coincides with conditioning
+(Theorems~S4--S6).  Separated absorbed groups (no events) are detected
+and dropped a priori, as in \citet{correia2020};
+Section~\ref{sec:app-register} exercises the full composition at scale,
+and Section~\ref{sec:app-flights} checks it against \texttt{pyfixest} on
+real data.
 % =========================================================================
 \section{Numerical experiments}\label{sec:simulations}
 % =========================================================================
@@ -737,8 +882,9 @@ Gamma    & $10^6$        & 200 & 2 & $2.5\times10^{-13}$ & $1.3\times10^{-15}$ &
 
 Three observations.  First, the iterate sequences agree to
 $10^{-13}$--$10^{-15}$ throughout---floating-point reordering noise---%
-confirming Theorem~\ref{thm:tilted}(iv): this is the same algorithm, not
-an approximation.  Second, measured per-iteration speedups range from
+confirming Theorem~\ref{thm:tilted}(iv): the tilted iteration is the
+same algorithm as full-design Newton, not an approximation to it.
+Second, measured per-iteration speedups range from
 $12\times$ ($J = 50$) to $117\times$ ($J = 500$), growing with $k$ as
 Corollary~\ref{cor:complexity} predicts, though below the raw FLOP ratios
 ($430\times$--$4700\times$) because the dense baseline runs
@@ -747,83 +893,278 @@ right guide to scaling, the measured ratio to wall-clock budgeting.
 Third, the dense baseline at $N = 10^6$, $J = 200$ already needs a
 $1.6$\,GB design matrix where the tilted pass needs the $p$ continuous
 columns only; at the dimensions of Section~\ref{sec:app-register} the
-dense fit is not slow but impossible.
+dense fit exceeds the memory of a typical workstation before the first
+iteration.
 
 
 
-\subsection{Comparison with general-purpose and sparse implementations}
+\subsection{Comparison with production implementations}
 \label{sec:sim-baselines}
 
-Study 1b benchmarks total time to convergence (identical tolerance
-$10^{-9}$, comparable starts) for the same model ($N = 200{,}000$,
-$J = 200$ cells, $p = 2$) against two external baselines: the
-\texttt{statsmodels} GLM implementation---IRLS on the dense design, the
-standard general-purpose route in Python---and a sparse-design IRLS in
-which the design (continuous columns plus cell dummies) is held in CSR
-form and the normal equations are formed and solved sparsely, i.e., the
-natural ``the dummies are sparse, so use a sparse solver'' alternative
-that a careful practitioner would code.
+Study~1b benchmarks total time and peak memory to convergence (identical
+tolerance $10^{-9}$, comparable starting values) against the
+implementations a practitioner would actually reach for.  Each fit runs
+in a fresh process so that peak resident set size (RSS) isolates one
+method's footprint; times are medians over repeated fits and iteration
+counts are reported alongside.  For the non-absorbed model
+(Table~\ref{tab:sim1b}, $N = 200{,}000$, $J = 200$, $p = 2$) the
+competitors are our own dense Newton; \texttt{statsmodels}
+\citep{seabold2010}, the standard general-purpose Python GLM (dense
+IRLS); a sparse-design IRLS holding the design (continuous columns plus
+cell dummies) in compressed-sparse-row form and forming and solving the
+normal equations sparsely---the ``the dummies are sparse, so use a
+sparse solver'' route a careful analyst would code; and \texttt{glum}
+\citep{tabmat2021}, QuantCo's high-performance GLM, which carries
+categorical covariates in a dedicated split-matrix backend and is among
+the fastest Python GLM implementations.
 
 \begin{table}[t]
 \centering
-\caption{Study 1b: total wall-clock time to convergence and maximum
-absolute coefficient deviation from the tilted fit;
-$N = 200{,}000$, $J = 200$, $p = 2$, tolerance $10^{-9}$.}
+\caption{Study~1b, no absorbed factor: total time to convergence, peak
+resident memory, and iterations, with the maximum absolute
+coefficient deviation from the tilted fit.  $N = 200{,}000$,
+$J = 200$ cells, $p = 2$, tolerance $10^{-9}$; every method computes the
+same MLE.  ($t_{\text{tilted}}$ shown is the warm value; the very first
+subprocess spawned in a run pays a one-time interpreter/BLAS start-up
+cost.)}
 \label{tab:sim1b}
 \small
-\begin{tabular}{lcccccc}
+\begin{tabular}{llrrrl}
 \toprule
-& \multicolumn{4}{c}{Time (s)} & \multicolumn{2}{c}{Max.\ deviation} \\
-\cmidrule(lr){2-5}\cmidrule(lr){6-7}
-Family & Tilted & Dense & \texttt{statsmodels} & Sparse &
-\texttt{statsmodels} & Sparse \\
+Family & Method & Time (s) & Peak (MB) & Iters & Max.\ dev. \\
 \midrule
-Poisson  & 0.11 & 3.85 & 36.8 & 0.24 & $7\times10^{-15}$ &
-$2\times10^{-15}$ \\
-Logistic & 0.07 & 1.74 & 24.4 & 0.15 & $3\times10^{-15}$ &
-$7\times10^{-15}$ \\
+\multirow{5}{*}{Poisson}
+ & \textbf{tilted}      & \textbf{0.08} & \textbf{80}   & 9 & --- \\
+ & sparse IRLS          & 0.26 & 107  & 9 & $6\times10^{-17}$ \\
+ & \texttt{glum}        & 0.90 & 227  & 7 & $3\times10^{-17}$ \\
+ & dense Newton         & 3.1  & 998  & 8 & $6\times10^{-17}$ \\
+ & \texttt{statsmodels} & 14.2 & 3972 & 7 & $2\times10^{-15}$ \\
+\midrule
+\multirow{5}{*}{Logistic}
+ & \textbf{tilted}      & \textbf{0.10} & \textbf{76}   & 8 & --- \\
+ & sparse IRLS          & 0.23 & 107  & 8 & $3\times10^{-17}$ \\
+ & \texttt{glum}        & 0.37 & 229  & 5 & $2\times10^{-16}$ \\
+ & dense Newton         & 3.1  & 997  & 8 & $6\times10^{-17}$ \\
+ & \texttt{statsmodels} & 14.0 & 3972 & 7 & $6\times10^{-15}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Three lessons from Table~\ref{tab:sim1b}.  First, all four
-implementations agree to $10^{-15}$: everything here computes the same
-MLE, and the comparison is purely about arithmetic organization.
-Second, against the implementations practitioners actually reach
-for, the gains are larger than against our own dense baseline: two
-orders of magnitude over \texttt{statsmodels} (whose IRLS re-forms and
-factorizes the dense system each step).  Third---and most informative
-about \emph{where} the structure pays---the sparse-design IRLS is a
-respectable competitor, as it should be: cell dummies are the textbook
-sparse design.  The tilted pass is still $2$--$3\times$ faster here
-because it never materializes a design at all (the sparse route stores
-and re-multiplies $N(p + 1)$ nonzeros and re-forms an
-$O((p+k)^2)$-sparsity Gram matrix each iteration), and the gap widens
-with $k$ and with interactions of categorical variables, which inflate
-the sparse Gram fill-in but leave the tilted cell algebra unchanged.
-The fair summary is not that sparse solvers fail---they do well---but
-that the tilted representation is what a sparse solver would discover if
-it also knew that the dummy block is a partition: the cell structure is
-sparser than sparsity.
+Every method returns the same coefficients to $10^{-15}$: the comparison
+is purely one of arithmetic organization and memory.  The tilted pass is
+fastest and, more decisively, lightest: its $\sim\!80$\,MB is the loaded
+columns plus cell accumulators, against $\sim\!1$\,GB for a dense design
+and $\sim\!4$\,GB for \texttt{statsmodels}' internal copies, a $12$--$50\times$
+memory advantage that grows with $N$ (Section~\ref{sec:sim-scaling}).
+The sparse-design IRLS is the strongest competitor at $p = 2$, as it
+should be---cell dummies are the textbook sparse design---but the second
+panel of the study, which sweeps the continuous dimension
+$p \in \{2, 20, 50\}$ (Poisson; Table~\ref{tab:sim1p}), shows where the
+two part ways: the tilted cost grows as $O(Np^2)$ on the dense continuous
+block only, while the sparse route's Gram matrix fills in and its factor
+grows super-linearly, so at $p = 50$ the sparse solver is $10\times$
+slower than tilted and dense Newton overtakes it.  \texttt{statsmodels}
+and \texttt{glum} are omitted from the $p$-sweep: the former needs tens
+of seconds and gigabytes per fit, and \texttt{glum}'s unpenalized
+($\alpha = 0$) solver returned a singular-matrix error for $p \ge 20$---%
+it is engineered for penalized fitting, and the exact MLE is outside its
+robust regime.
+
+\begin{table}[t]
+\centering
+\caption{Study~1b, continuous-dimension sweep (Poisson, $N = 200{,}000$,
+$J = 200$): time and peak memory for the exact-MLE methods.  The tilted
+cost grows in $p$ on the continuous block only; the sparse Gram fill-in
+makes the sparse route super-linear in $p$.}
+\label{tab:sim1p}
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+& \multicolumn{3}{c}{Time (s)} & \multicolumn{3}{c}{Peak (MB)} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+$p$ & tilted & dense & sparse & tilted & dense & sparse \\
+\midrule
+2  & 0.08 & 3.0 & 0.27 & 80  & 998  & 107 \\
+20 & 0.41 & 3.4 & 2.73 & 135 & 1081 & 262 \\
+50 & 1.18 & 4.4 & 12.5 & 227 & 1219 & 512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{High-dimensional fixed effects: comparison with
+\texttt{pyfixest}}\label{sec:sim-hdfe}
+
+When a high-dimensional factor is absorbed rather than entered as
+dummies, the relevant competitor is a dedicated HDFE--GLM tool.  Study~1d
+(Table~\ref{tab:sim1d}) benchmarks the absorbed-factor path against
+\texttt{pyfixest} \citep{berge2018}, the Python implementation of the
+\texttt{fixest} alternating-projections algorithm, on Poisson models with
+$N \in \{2, 5\}\times10^5$, $J = 100$ cells, $p = 2$, and one absorbed
+factor of $500$ to $20{,}000$ levels; dense-dummy Newton and \texttt{glum}
+with dense dummies are included as references.
+
+\begin{table}[t]
+\centering
+\caption{Study~1d, one absorbed factor: time, peak memory, and deviation
+from the tilted fit.  Dense-dummy Newton and \texttt{glum} form the
+$N \times (J + \text{levels})$ design explicitly and fail (singular
+Hessian, or out of memory / did not finish within $20$ minutes) once the
+factor exceeds a few thousand levels.  \texttt{pyfixest} matches to its
+own demeaning tolerance ($\sim\!10^{-4}$).}
+\label{tab:sim1d}
+\small
+\begin{tabular}{rlrrl}
+\toprule
+Levels & Method & Time (s) & Peak (MB) & Max.\ dev. \\
+\midrule
+\multirow{4}{*}{500}
+ & \textbf{tilted}     & \textbf{0.10} & \textbf{79}  & --- \\
+ & \texttt{pyfixest}   & 0.19 & 378  & $4\times10^{-4}$ \\
+ & dense Newton        & 10.0 & 2837 & $4\times10^{-13}$ \\
+ & \texttt{glum}       & \multicolumn{2}{c}{singular} & --- \\
+\midrule
+\multirow{4}{*}{5{,}000}
+ & \textbf{tilted}     & \textbf{0.16} & \textbf{79}  & --- \\
+ & \texttt{pyfixest}   & 0.21 & 372  & $5\times10^{-4}$ \\
+ & dense Newton        & \multicolumn{2}{c}{out of memory} & --- \\
+ & \texttt{glum}       & \multicolumn{2}{c}{singular} & --- \\
+\midrule
+\multirow{4}{*}{20{,}000}
+ & \textbf{tilted}     & \textbf{0.36} & \textbf{112} & --- \\
+ & \texttt{pyfixest}   & 0.64 & 544  & $4\times10^{-4}$ \\
+ & dense Newton        & \multicolumn{2}{c}{out of memory} & --- \\
+ & \texttt{glum}       & \multicolumn{2}{c}{out of memory} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Against the specialized tool the tilted absorption is roughly twice as
+fast and four to five times lighter, while returning the exact MLE
+(\texttt{pyfixest} agrees to its demeaning tolerance).  The dense-dummy
+routes confirm why HDFE tools exist at all: they exhaust memory once the
+factor passes a few thousand levels.  The like-for-like comparison on
+\emph{real} data in Section~\ref{sec:app-flights}, where the two agree to
+$10^{-9}$, is the more stringent test; the point of the synthetic sweep
+is the memory and timing trend.
+
+\subsection{Scaling in $N$ and memory footprint}\label{sec:sim-scaling}
+
+Study~1e runs the tilted Poisson fit at $N$ from $10^6$ to $5\times10^7$
+($J = 500$, $p = 2$), each in a fresh process
+(Table~\ref{tab:scaling}).  Wall-clock is linear in $N$ at
+$\approx\!1.2$ seconds per million records once the fixed start-up cost
+is amortized, and peak memory is linear as well---the loaded columns
+$O(N(p+1))$ plus the $O(J(k^2 + kp))$ accumulators---reaching
+$3.8$\,GB at $N = 5\times10^7$.  A dense $N \times (p + J)$ design for the
+same problem would occupy $200$\,GB, a factor of $53$ more; the tilted
+pass forms no design matrix, so the whole fit stays within a laptop's
+memory at a scale where the dense and sparse routes cannot allocate their
+first iterate.  This is the controlled counterpart of the register-scale
+application (Section~\ref{sec:app-register}): the same $O(N)$ time and
+memory, measured across a two-order-of-magnitude range of $N$.
+
+\begin{table}[t]
+\centering
+\caption{Study~1e: tilted Poisson fit scaling ($J = 500$, $p = 2$).
+Time is linear in $N$; peak memory is linear and far below the size of a
+dense design, which for $N = 5\times10^7$ would need $200$\,GB.}
+\label{tab:scaling}
+\small
+\begin{tabular}{rrrrr}
+\toprule
+$N$ & Time (s) & Peak (GB) & Dense design (GB) & Ratio \\
+\midrule
+$1\times10^6$ & 1.4  & 0.17 & 4.0   & 24 \\
+$5\times10^6$ & 6.9  & 0.44 & 20.1  & 46 \\
+$2\times10^7$ & 23.6 & 1.56 & 80.3  & 51 \\
+$5\times10^7$ & 59.6 & 3.79 & 200.8 & 53 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Sensitivity: imbalance and rare events}
 \label{sec:sim-sensitivity}
 
-Study 1c re-runs the exactness comparison under stress: cell sizes drawn
+Study~1f re-runs the exactness comparison under stress: cell sizes drawn
 from a Zipf($1.6$) law (a few giant cells, a long tail of tiny ones) and
-event rates pushed to $\sim 0.2\%$ (Poisson means $\sim 0.002$; logistic
-prevalence $\sim 0.5\%$), with event-free cells dropped as the MLE
+event rates pushed to $\sim\!0.2\%$ (Poisson means $\sim\!0.002$; logistic
+prevalence $\sim\!0.5\%$), with event-free cells dropped as the MLE
 requires.  Across all eight family $\times$ scenario combinations the
-maximum deviation from dense Newton remains at
-$10^{-15}$--$10^{-14}$, convergence takes at most $12$ iterations
-(rare-event fits need a few more steps, as expected from their flatter
-likelihoods), and the streaming pass time is unchanged---the
-accumulation is a data-independent $O(N)$ sweep, so imbalance shifts
-work between cells without changing its total.  Exactness is an
-algebraic identity and is expected to survive stress; the value of the
-study is confirming that the \emph{implementation} (binned accumulation,
-line search, drop rules) inherits the robustness
-(script \texttt{sim1b\_baselines.py}).
+maximum deviation from dense Newton stays at $10^{-15}$--$10^{-14}$,
+convergence takes at most $12$ iterations (rare-event fits need a few
+more steps, as their likelihoods are flatter), and the streaming pass
+time is unchanged: the accumulation is a data-independent $O(N)$ sweep,
+so imbalance redistributes work across cells without changing its total.
+Exactness is an algebraic identity, so it is expected to survive stress;
+the study confirms that the \emph{implementation}---binned accumulation,
+line search, drop rules---inherits it.
+
+\subsection{Numerical stability}\label{sec:sim-stability}
+
+Because the tilted iteration is the same Newton/Fisher iteration as the
+full-design fit (Theorem~\ref{thm:tilted}), the question a numerical
+analyst asks is whether the \emph{implementation}---binned accumulation,
+log-domain likelihood, line search, pseudoinverse fallback---inherits the
+conditioning of the underlying problem or degrades it.  Study~1g
+(Table~\ref{tab:stability}) answers this on a battery of adversarial
+scenarios at $N = 10^5$: near-collinear covariates (correlation
+$0.9999$); an ill-scaled covariate (multiplied by $10^6$, giving
+information-matrix condition number $\sim\!10^{17}$); extreme offsets
+spanning $30$ log units; linear predictors driven to $\pm 40$
+(over/underflow territory); Zipf($1.3$)-unbalanced cells; and an
+informative covariate carried on a $10^8$ pedestal (catastrophic
+cancellation in any naive sum of squares).  For each we report the
+condition number, the deviation from dense Newton on the same data, and
+the deviation from a cancellation-free reference---the mathematically
+identical model with the continuous columns standardized, then mapped
+back---so that a genuine conditioning failure is separated from a faithful
+reproduction of a hard problem.
+
+\begin{table}[t]
+\centering
+\caption{Study~1g: stability battery (Poisson; the logistic panel is
+similar).  ``$\kappa$'' is the information-matrix condition number;
+``vs.\ dense'' the max coefficient deviation from dense Newton on the raw
+data; ``vs.\ std'' the deviation from the standardized-covariate
+reference (a conditioning diagnostic).  The tilted fit matches dense and
+the well-conditioned reference throughout, except under a $10^8$
+pedestal, where dense diverges \emph{identically} (catastrophic
+cancellation shared by every double-precision solver) and centering the
+covariate---the one-line standardization the paper recommends---restores
+full accuracy.}
+\label{tab:stability}
+\small
+\begin{tabular}{lccc c}
+\toprule
+Scenario & $\kappa$ & vs.\ dense & vs.\ std & converged \\
+\midrule
+balanced                 & $4\times10^{5}$  & $2\times10^{-14}$ & $6\times10^{-17}$ & yes \\
+collinear ($0.9999$)     & $5\times10^{5}$  & $8\times10^{-14}$ & $1\times10^{-13}$ & yes \\
+ill-scaled ($\times10^6$)& $3\times10^{17}$ & $4\times10^{-14}$ & $0$               & yes \\
+extreme offset           & $3\times10^{5}$  & $1\times10^{-15}$ & $6\times10^{-17}$ & yes \\
+huge $\eta$ ($\pm40$)    & $2\times10^{11}$ & $1\times10^{-11}$ & $3\times10^{-17}$ & yes \\
+unbalanced (Zipf)        & $3\times10^{5}$  & $1\times10^{-15}$ & $6\times10^{-17}$ & yes \\
+$10^8$ pedestal (raw)    & $9\times10^{29}$ & $1\times10^{7\phantom{-}}$ & $0.27$ & no  \\
+$10^8$ pedestal (centered)& $3\times10^{5}$ & $5\times10^{-14}$ & $3\times10^{-17}$ & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The reading is clean.  At condition numbers up to $10^{17}$, with linear
+predictors at $\pm 40$, exposures spanning $30$ log units, near-collinear
+covariates, and Zipf-unbalanced cells, the tilted fit reproduces dense
+Newton and the standardized reference to $10^{-11}$--$10^{-17}$: the
+accumulation neither introduces nor amplifies ill-conditioning.  The one
+genuine failure---an informative signal on a $10^8$ pedestal---is a
+catastrophic-cancellation hazard of the raw parametrization, not of the
+tilted pass: dense Newton diverges by the same $10^7$, and standardizing
+the covariate (which the reference implementation offers and the paper
+recommends as routine preprocessing, following standard practice;
+\citealp{higham2002}) returns the fit to full accuracy.  We flag this
+explicitly rather than suppress it: no double-precision GLM solver
+survives a covariate whose signal sits $16$ digits below its magnitude,
+and the honest remedy is to standardize, not to claim immunity.
+
 % =========================================================================
 \section{Applications}\label{sec:applications}
 % =========================================================================
@@ -847,7 +1188,7 @@ flight) is quasi-separated---its dummy's MLE is $-\infty$---and is
 dropped by the level-wise separation rule, after which the MLE exists.
 
 The tilted logistic fit converges in $7$ Newton iterations,
-$1.7$ seconds including robust standard errors.  The diurnal effect is
+$1.3$ seconds including robust standard errors.  The diurnal effect is
 the substantive headline: the odds of a late arrival multiply by
 $1.11$ per hour of scheduled departure time (robust SE on the log scale
 $0.001$)---delays cascade through the day, a finding familiar from the
@@ -857,14 +1198,29 @@ flagged in Section~\ref{sec:tilted-main}: distance is constant within
 origin--destination routes, hence within cells, so after destination
 main effects it is identified only through cross-route contrasts and is
 correspondingly imprecise ($+0.65$, robust SE $0.28$)---the estimator
-handles cell-constant continuous covariates correctly and the standard
-error says exactly how little such a covariate adds.
+handles cell-constant continuous covariates correctly, and the standard
+error reports how little such a covariate adds.
 
-As external validation, the identical model was fitted with
+As external validation, the identical model fitted with
 \texttt{statsmodels} GLM on the dense $327{,}345 \times 133$ design
-($0.35$\,GB): maximum absolute coefficient deviation
-$2.3 \times 10^{-13}$, at $16.6$ seconds versus $1.7$---the same
-estimator, ten times cheaper, with no design matrix in memory
+($0.35$\,GB) gives a maximum absolute coefficient deviation of
+$2.3 \times 10^{-13}$, at $19$ seconds versus $1.3$: the same estimator,
+$15\times$ cheaper, with no design matrix in memory.
+
+A second model on the same data exercises the high-dimensional
+absorption path against \texttt{pyfixest}.  We now absorb
+\emph{aircraft}---the $3{,}692$ tail numbers that survive the separation
+drop---crossed with a twelve-level month cell structure (an aircraft
+flies across months, so the two factors are identified), keeping the two
+continuous covariates.  The tilted logistic fit with absorbed aircraft
+converges in $31$ iterations and $1.5$ seconds; \texttt{pyfixest}'s
+\texttt{feglm} on the same specification takes $2.1$ seconds, and the two
+agree on the continuous coefficients to $1.2 \times 10^{-9}$ (departure
+hour $0.103994$ from both).  This is the paper's most stringent external
+check: on real high-dimensional data, the tilted absorption reproduces
+the estimate of a mature, purpose-built HDFE--GLM package to nine digits,
+at comparable speed, while also carrying the cell-structured part of the
+model that \texttt{pyfixest} treats as ordinary covariates
 (script \texttt{app\_flights.py}; the data file is fetched from the
 public repository cited in the script).
 
@@ -915,11 +1271,12 @@ female $-0.455$ (truth $-0.45$), education gradients $-0.13/-0.27/-0.40$
 Gompertz truth to two decimals.  The point of the exercise is not these
 numbers---the generator made them true---but the demonstration that a
 model of this shape, with inference, is an interactive-latency
-computation under the tilted-moment organization and an infeasible one
-under the dense organization; on genuine register data inside a secure
-environment, where wall-clock and memory budgets are tight and software
-dependencies restricted, this difference is what determines whether such
-models get fitted at all.
+computation under the tilted-moment organization, whereas a dense
+dummy-variable design for the same model would need to allocate a
+terabyte-scale matrix before its first iteration; on genuine register
+data inside a secure environment, where wall-clock and memory budgets are
+tight and software dependencies restricted, this difference is often what
+determines whether such models are fitted at all.
 
 
 % =========================================================================

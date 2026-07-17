@@ -1,8 +1,13 @@
 nycflights13: N=327,346 flights with observed arrival delay; 80,100 late arrivals (24.5%); loaded in 1.4s
 dropped 1 flights in separated dest levels: ['LEX']
 cells J=3,863 (carrier x origin x dest x month); k=131 cell-level parameters (16 carriers, 3 origins, 103 destinations, 12 months); p=2 continuous (dep hour, log distance)
-tilted logistic fit: 1.68s, 7 Newton iterations, converged=True, ll=-169946.5
+tilted logistic fit: 1.27s, 7 Newton iterations, converged=True, ll=-169946.5
   dep hour (per hour) : +0.10570 (robust se 0.00096) -> OR/hour 1.1115
   log distance (per sd): +0.65387 (robust se 0.28117)
 dense design for statsmodels: 327,345 x 133 (0.35 GB)
-statsmodels GLM: 16.60s; max |tilted - statsmodels| = 2.34e-13; speed ratio 10x
+statsmodels GLM: 19.17s; max |tilted - statsmodels| = 2.34e-13; speed ratio 15x
+
+--- High-dimensional fixed effects: absorbing aircraft ---
+N=326,364 flights; absorbing 3,692 aircraft (tail numbers) crossed with 12 month cells; p=2 continuous covariates
+tilted (absorb aircraft): 1.45s, 31 iterations, converged=True; dep hour +0.103994, log distance +0.078873
+pyfixest feglm (| month + tail): 2.13s; dep hour +0.103994, log distance +0.078873; max |tilted - pyfixest| = 1.15e-09

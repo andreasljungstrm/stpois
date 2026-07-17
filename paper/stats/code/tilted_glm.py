@@ -299,20 +299,41 @@ def _assemble(R, M0, M1, Q, Ux, W):
 # ----------------------------------------------------------------------
 
 
-def _absorb_update_poisson(y, eta_wo_g, groups, J_g):
-    """Exact block maximiser for one absorbed Poisson factor:
-    alpha_g = log( sum_{i in g} y_i / sum_{i in g} exp(eta_i^{(-g)}) )."""
-    num = np.bincount(groups, weights=y, minlength=J_g)
-    den = np.bincount(groups, weights=np.exp(eta_wo_g), minlength=J_g)
-    with np.errstate(divide="ignore"):
-        return np.log(num) - np.log(den)
+def _block_update(fam, y, eta_wo_g, groups, J_g, alpha0=None,
+                  inner_newton=40, tol=1e-12):
+    """Exact block maximiser for one absorbed factor given the linear
+    predictor excluding that factor's effect.  For Poisson (canonical
+    log) the maximiser is closed form; for any other canonical family it
+    solves the per-group score equation sum_{i in g} b'(alpha_g + rest_i)
+    = sum_{i in g} y_i by vectorised one-dimensional Newton (all groups
+    at once).  This is the exact blockwise maximisation whose monotone
+    ascent underlies Supplement Theorem S1 for log-concave links."""
+    D = np.bincount(groups, weights=y, minlength=J_g)
+    if fam.name == "poisson":
+        den = np.bincount(groups, weights=np.exp(eta_wo_g), minlength=J_g)
+        with np.errstate(divide="ignore"):
+            return np.log(D) - np.log(den)
+    a = np.zeros(J_g) if alpha0 is None else alpha0.copy()
+    for _ in range(inner_newton):
+        eta = a[groups] + eta_wo_g
+        mu = fam.mean(eta)
+        w = fam.weight(eta)
+        f = np.bincount(groups, weights=mu, minlength=J_g) - D
+        fp = np.bincount(groups, weights=w, minlength=J_g)
+        step = f / np.where(fp > 1e-300, fp, 1e-300)
+        a = a - step
+        if np.max(np.abs(step)) < tol:
+            break
+    return a
 
 
-def _solve_absorbed_poisson(y, base_eta, absorb, alphas, tol=1e-10,
-                            maxiter=1000):
+def _solve_absorbed(fam, y, base_eta, absorb, alphas, tol=1e-10,
+                    maxiter=1000):
     """Nonlinear block Gauss--Seidel over the absorbed factors at fixed
-    (gamma, delta): Algorithm 1, inner loop.  Returns updated alphas and the
-    total absorbed contribution.  Monotone in the likelihood by Supplement Theorem S1."""
+    (gamma, delta): Algorithm 1, inner loop.  Returns updated alphas and
+    the total absorbed contribution.  Monotone in the likelihood by
+    Supplement Theorem S1 (Poisson closed form; general canonical family
+    by exact one-dimensional block maximisation)."""
     G = len(absorb)
     contrib = np.zeros_like(base_eta)
     for g in range(G):
@@ -321,8 +342,8 @@ def _solve_absorbed_poisson(y, base_eta, absorb, alphas, tol=1e-10,
         max_move = 0.0
         for g in range(G):
             eta_wo_g = base_eta + contrib - alphas[g][absorb[g]]
-            new = _absorb_update_poisson(y, eta_wo_g, absorb[g],
-                                         len(alphas[g]))
+            new = _block_update(fam, y, eta_wo_g, absorb[g],
+                                len(alphas[g]), alpha0=alphas[g])
             move = np.max(np.abs(new - alphas[g])) if len(new) else 0.0
             max_move = max(max_move, move)
             contrib += (new - alphas[g])[absorb[g]]
@@ -347,14 +368,18 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
     ----------
     absorb : optional list of (N,) int arrays of group indices; each factor
              is absorbed by the nonlinear Gauss--Seidel of Algorithm 1
-             (currently Poisson only, matching the paper's Section 3).
+             (Poisson closed form; other canonical families by exact
+             1-D block maximisation, matching Supplement Theorem S1).
     firth  : use Firth's bias-reducing adjusted score (canonical links).
     vce    : 'oim', 'robust', or 'cluster' (requires `cluster` indices).
     """
     fam = FAMILIES[family] if isinstance(family, str) else family
     absorb = absorb or []
-    if absorb and fam.name != "poisson":
-        raise NotImplementedError("closed-form absorption requires Poisson")
+    if absorb and firth:
+        raise NotImplementedError("Firth with absorbed factors "
+                                  "not implemented")
+    if absorb and not fam.canonical:
+        raise NotImplementedError("absorption assumes a canonical link")
     alphas = [np.zeros(int(a.max()) + 1) for a in absorb]
 
     p, k = design.p, design.k
@@ -368,8 +393,8 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
 
     contrib = np.zeros(design.N)
     if absorb:
-        alphas, contrib, _ = _solve_absorbed_poisson(
-            y, design.eta(gamma, delta), absorb, alphas,
+        alphas, contrib, _ = _solve_absorbed(
+            fam, y, design.eta(gamma, delta), absorb, alphas,
             tol=inner_tol or tol)
     eta = design.eta(gamma, delta, contrib if absorb else None)
     ll = fam.loglik(y, eta, scale)
@@ -412,8 +437,8 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
             d_new = delta + lam * step[p:]
             if absorb:
                 alphas_new = [a.copy() for a in alphas]
-                alphas_new, contrib_new, _ = _solve_absorbed_poisson(
-                    y, design.eta(g_new, d_new), absorb, alphas_new,
+                alphas_new, contrib_new, _ = _solve_absorbed(
+                    fam, y, design.eta(g_new, d_new), absorb, alphas_new,
                     tol=inner_tol or tol)
             else:
                 contrib_new = None
@@ -523,7 +548,10 @@ def fit_full(y, A, offset, family="poisson", tol=1e-9, maxiter=100,
             resid = omega * fam.working_residual(y, eta)
         U = A.T @ resid
         H = (A * omega[:, None]).T @ A
-        step = np.linalg.solve(H, U)
+        try:
+            step = np.linalg.solve(H, U)
+        except np.linalg.LinAlgError:
+            step = np.linalg.lstsq(H, U, rcond=None)[0]
         lam, accepted = 1.0, False
         while lam >= 2.0 ** -16:
             theta_new = theta + lam * step

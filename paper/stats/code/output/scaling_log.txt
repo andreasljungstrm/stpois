@@ -1,0 +1,6 @@
+N=  1,000,000 t=7.64s peak=0.17GB iters=8 | dense design would be 4.0GB (24x)
+N=  5,000,000 t=6.90s peak=0.44GB iters=8 | dense design would be 20.1GB (46x)
+N= 20,000,000 t=23.59s peak=1.56GB iters=8 | dense design would be 80.3GB (51x)
+N= 50,000,000 t=59.57s peak=3.79GB iters=8 | dense design would be 200.8GB (53x)
+
+time per 1e6 rows: [7.643, 1.38, 1.18, 1.191]

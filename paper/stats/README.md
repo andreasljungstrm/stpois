@@ -28,13 +28,15 @@ idea developed end to end:
    memory/parallelism, exact cell-accumulated robust/cluster VCEs, and
    the composition with absorbed fixed-effect factors.
 4. Experiments: iterate-level exactness at 1e-13–1e-15 (Poisson,
-   logistic, gamma); total-time benchmarks vs dense Newton,
-   `statsmodels`, and a sparse-design IRLS; imbalance and rare-event
-   sensitivity.
+   logistic, gamma); time + peak-memory benchmarks vs `statsmodels`,
+   `glum`, a sparse-design IRLS, and (for absorbed factors) `pyfixest`,
+   with a p-sweep; O(N) time/memory scaling to 5×10⁷ records; a
+   numerical-stability battery; and imbalance/rare-event sensitivity.
 5. Applications: the public `nycflights13` data (327k flights, logistic
-   on-time model, J=3,863 cells, verified against `statsmodels` at 10x
-   less cost) and a register-scale synthetic study (5M episodes, 10,000
-   absorbed municipality–year effects, seconds on one core).
+   on-time model verified against `statsmodels` to 1e-13, and against
+   `pyfixest` to 1e-9 once 3,692 aircraft are absorbed) and a
+   register-scale synthetic study (5M episodes, 10,000 absorbed
+   municipality–year effects, seconds on one core).
 
 **Online supplement (`supplement.tex` → `supplement.pdf`, ~26 pp.)** —
 companion theory with proofs and simulations:

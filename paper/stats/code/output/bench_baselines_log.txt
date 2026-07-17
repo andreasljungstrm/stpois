@@ -1,0 +1,35 @@
+4
+EXIT:0
+Panel A (no absorbed factor):
+  poisson  p=2   tilted       t=3.164s mem=80MB iters=9 dev=0.0e+00
+  poisson  p=2   dense        t=3.141s mem=998MB iters=8 dev=5.6e-17
+  poisson  p=2   statsmodels  t=14.158s mem=3972MB iters=7 dev=1.6e-15
+  poisson  p=2   sparse       t=0.264s mem=107MB iters=9 dev=5.6e-17
+  poisson  p=2   glum         t=0.896s mem=227MB iters=7 dev=2.8e-17
+  binomial p=2   tilted       t=0.095s mem=76MB iters=8 dev=0.0e+00
+  binomial p=2   dense        t=3.119s mem=997MB iters=8 dev=5.6e-17
+  binomial p=2   statsmodels  t=14.009s mem=3972MB iters=7 dev=5.8e-15
+  binomial p=2   sparse       t=0.231s mem=107MB iters=8 dev=2.8e-17
+  binomial p=2   glum         t=0.369s mem=229MB iters=5 dev=2.2e-16
+  poisson  p=2   tilted       t=0.077s mem=80MB iters=9 dev=0.0e+00
+  poisson  p=2   dense        t=3.049s mem=998MB iters=8 dev=5.6e-17
+  poisson  p=2   sparse       t=0.265s mem=107MB iters=9 dev=5.6e-17
+  poisson  p=20  tilted       t=0.407s mem=135MB iters=9 dev=0.0e+00
+  poisson  p=20  dense        t=3.370s mem=1081MB iters=8 dev=2.8e-17
+  poisson  p=20  sparse       t=2.726s mem=262MB iters=9 dev=3.2e-17
+  poisson  p=50  tilted       t=1.179s mem=227MB iters=9 dev=0.0e+00
+  poisson  p=50  dense        t=4.361s mem=1219MB iters=9 dev=5.6e-17
+  poisson  p=50  sparse       t=12.521s mem=512MB iters=9 dev=5.6e-17
+Panel B (one high-dimensional absorbed factor):
+  absorb=500    tilted       t=0.103s mem=79MB dev=0.0e+00
+  absorb=500    pyfixest     t=0.193s mem=378MB dev=3.8e-04
+  absorb=500    dense        t=10.013s mem=2837MB dev=3.7e-13
+  absorb=500    glum         FAILED (singular)
+  absorb=5000   tilted       t=0.161s mem=79MB dev=0.0e+00
+  absorb=5000   pyfixest     t=0.207s mem=372MB dev=5.4e-04
+  absorb=5000   dense        FAILED (timeout/oom)
+  absorb=5000   glum         FAILED (singular)
+  absorb=20000  tilted       t=0.362s mem=112MB dev=0.0e+00
+  absorb=20000  pyfixest     t=0.643s mem=544MB dev=3.5e-04
+  absorb=20000  dense        FAILED (oom)
+  absorb=20000  glum         FAILED (timeout/oom)
