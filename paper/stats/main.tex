@@ -68,6 +68,8 @@
 \newcommand{\bD}{\mathbf{D}}
 \newcommand{\bI}{\mathbf{I}}
 \newcommand{\bP}{\mathbf{P}}
+\newcommand{\bS}{\mathbf{S}}
+\newcommand{\bG}{\mathbf{G}}
 \newcommand{\bzero}{\mathbf{0}}
 
 \title{Tilted Cell Moments: A One-Pass Exact Newton Method for
@@ -808,6 +810,109 @@ constants, not the ratios or the $O(\cdot)$ trends, which are the
 claims I make; every figure regenerates from the scripts in the code
 supplement.
 
+\subsection{Sparse cell-level designs}\label{sec:sparse-cells}
+
+One regime remains in which the reorganization of
+Theorem~\ref{thm:tilted}, implemented naively, squanders its own
+advantage.  The cell assembly
+$\bF_{\delta\delta} = \bW'\diag(M^{(0)})\bW$ costs $O(Jk^2)$ and the
+Newton solve $O((p+k)^3)$ when $\bW$ is treated as dense; for the most
+common cell-level design of all---one-hot cell dummies, where $k$ grows
+with $J$---these two terms come to dominate precisely where the
+categorical structure is richest.  This is also the regime in which
+production GLM implementations are strongest, since one-hot columns are
+exactly what their sparsity heuristics detect: porting the tilted
+engine to the \texttt{fixest} IRLS loop and benchmarking against its
+sparsity-aware cross-products shows the tilted iteration winning by an
+order of magnitude on dense cell-level designs yet merely breaking even
+on classic one-hot dummies at $k$ in the hundreds---the dense cell
+algebra, not the microdata pass, is the bottleneck.  The remedy is to
+respect the sparsity of $\bW$ \emph{inside} the cell algebra.
+
+\begin{proposition}[Sparse cell algebra]\label{prop:sparse-cells}
+Let $\bW$ have $\nu$ nonzeros with row supports
+$s_j = |\{l : W_{jl} \neq 0\}|$, and let
+$\bF_{\gamma\gamma} = \bQ$, $\bF_{\gamma\delta}$,
+$\bF_{\delta\delta}$, and the score blocks be as in
+Theorem~\ref{thm:tilted}.  Then, at every iterate:
+(i) $\bF_{\delta\delta}$ and $\bF_{\gamma\delta}$ assemble from the
+tilted moments in $O(\sum_j s_j^2)$ and $O(\nu p)$ operations, and
+$\bF_{\delta\delta}$ has at most $\sum_j s_j^2$ nonzeros;
+(ii) the Newton step solves by block elimination of $\bdelta$: one
+sparse Cholesky factorization of $\bF_{\delta\delta}$, formation of the
+$p \times p$ Schur complement
+$\bS = \bQ - \bF_{\gamma\delta}\bF_{\delta\delta}^{-1}
+\bF_{\delta\gamma}$---the profile Hessian of the likelihood with the
+cell-level coordinates concentrated out---then
+$\Delta\bgamma = \bS^{-1}(\bU_\gamma -
+\bF_{\gamma\delta}\bF_{\delta\delta}^{-1}\bU_\delta)$ and
+$\Delta\bdelta$ by back-substitution, at the cost of the sparse
+factorization plus $O(\nu p + p^3)$;
+(iii) the resulting iterate sequence coincides exactly with that of
+Algorithm~\ref{alg:tilted};
+(iv) in the saturated case $\bW = \bI_J$,
+$\bF_{\delta\delta} = \diag(M^{(0)})$, the factorization is trivial,
+and the entire cell algebra runs in $O(Jp^2)$---so one Newton iteration
+costs $O(N(p^2+p+1)) + O(Jp^2)$ in total, independent of $k = J$.
+\end{proposition}
+
+The Schur complement in (ii) is the same profile Hessian that underlies
+the concentrated-likelihood theory of the supplement (there for the
+saturated Poisson case, where it coincides with conditional multinomial
+maximum likelihood); the sparse cell algebra simply turns that
+theoretical device into the computational path for every family.  It
+also clarifies the relation to absorption
+(Section~\ref{sec:absorb-impl}): a saturated cell factor may be
+absorbed by the inner Gauss--Seidel cycle \emph{or} estimated at the
+cell level through the sparse algebra at the same $O(Jp^2)$ order---the
+latter additionally delivering the cell coefficients and, because
+$\bF_{\delta\delta}$ is diagonal, their observed-information standard
+errors at $O(Jp^2)$ as well, via
+$[\bF^{-1}]_{\delta\delta} = \bF_{\delta\delta}^{-1} +
+\bF_{\delta\delta}^{-1}\bF_{\delta\gamma}\bS^{-1}
+\bF_{\gamma\delta}\bF_{\delta\delta}^{-1}$.  The $\bgamma$ block of
+every variance estimator of Section~\ref{sec:vce} is likewise exact in
+the sparse path: the observed-information block is $\bS^{-1}$ by the
+partitioned inverse, and the sandwich estimators are built from the
+concentrated scores
+$\hat u_i(\bx_i - \bG'\bw_{j(i)})$ with
+$\bG = \bF_{\delta\delta}^{-1}\bF_{\delta\gamma}$, at $O(\nu p)$.
+
+Table~\ref{tab:sim6} quantifies the effect (Study 6; saturated one-hot
+logistic cells, $p = 2$, $N = 10^5$ before the standard drop of
+constant-outcome cells).  The dense and sparse cell algebras produce
+identical estimates ($\le 2\times10^{-16}$), but the dense
+per-iteration cost grows quadratically in $k$ while the sparse cost is
+flat---at $J = 1{,}600$ the sparse path is already $14\times$ faster
+per iteration, and it carries to $J \approx 17{,}000$ cells at
+essentially the $J = 100$ cost, where the dense cell algebra and the
+full-design baseline are out of reach.
+
+\begin{table}[t]
+\centering
+\caption{Study 6: dense versus sparse cell algebra, saturated one-hot
+logistic cells ($p = 2$; $J$ after dropping constant-outcome cells;
+times are per Newton iteration, best of two runs).  ``Final dev.''\ is
+the maximum absolute difference of the sparse-path estimates from the
+dense cell algebra where the latter is run.  Dashes: configuration
+pointless or infeasible to run densely.}
+\label{tab:sim6}
+\small
+\begin{tabular}{rrcccc}
+\toprule
+$J = k$ & $N$ & $t/\mathrm{iter}$, full dense &
+$t/\mathrm{iter}$, dense cells & $t/\mathrm{iter}$, sparse cells &
+Final dev. \\
+\midrule
+100     & 100{,}000 & 0.072 & 0.0071 & 0.0073 & $1.1\times10^{-16}$ \\
+400     & 100{,}000 & 0.417 & 0.0087 & 0.0061 & $2.2\times10^{-16}$ \\
+1{,}600 & 100{,}000 & ---   & 0.0882 & 0.0063 & $2.2\times10^{-16}$ \\
+6{,}352 & 99{,}448  & ---   & ---    & 0.0074 & --- \\
+17{,}365 & 79{,}750 & ---   & ---    & 0.0087 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Robust and clustered variance estimation}\label{sec:vce}
 
 All variance estimators used in practice share the cell structure.  The
@@ -1536,6 +1641,45 @@ $g'(\mu) = 1/\mu$ give $\omega_i = 1/(\mu_i^2 \mu_i^{-2}) = 1$; the
 moments \eqref{eq:moments} are then constant in $\btheta$, and only
 $R_j = \sum_{i\in j}(y_i - \mu_i)/\mu_i$ requires re-evaluation, an
 $O(Np)$ pass. \qed
+
+\subsection{Proof of Proposition~\ref{prop:sparse-cells}}
+
+(i) $[\bF_{\delta\delta}]_{lm} = \sum_j M^{(0)}_j W_{jl} W_{jm}$
+receives a contribution only from cells $j$ with
+$\{l, m\} \subseteq \operatorname{supp}(\bw_j)$, i.e., $s_j^2$ ordered
+pairs per cell; likewise
+$[\bF_{\gamma\delta}]_{\cdot l} = \sum_j \mathbf{m}_j W_{jl}$ touches
+$\nu$ cell--column pairs, each contributing a $p$-vector.  The nonzero
+count of $\bF_{\delta\delta}$ is bounded by the number of distinct
+pairs, $\sum_j s_j^2$.
+(ii)--(iii) The information $\bF$ is symmetric positive definite on the
+identified parameter space, so its $\bdelta\bdelta$ block is as well,
+and block Gaussian elimination of $\bdelta$ is algebraically exact: the
+system $\bF \Delta\btheta = \bU$ is equivalent to
+$\bS\, \Delta\bgamma = \bU_\gamma -
+\bF_{\gamma\delta}\bF_{\delta\delta}^{-1}\bU_\delta$ followed by
+$\bF_{\delta\delta}\, \Delta\bdelta = \bU_\delta -
+\bF_{\delta\gamma}\Delta\bgamma$, with
+$\bS = \bQ - \bF_{\gamma\delta}\bF_{\delta\delta}^{-1}
+\bF_{\delta\gamma}$ the Schur complement, which is the negative Hessian
+of the likelihood concentrated over $\bdelta$ by the standard
+profile-likelihood identity.  The elimination therefore produces the
+same Newton direction as the dense solve of
+Algorithm~\ref{alg:tilted}, and since every other ingredient of the
+iteration (moments, line search, convergence test) is unchanged, the
+iterate sequences coincide.  The cost is one sparse Cholesky of
+$\bF_{\delta\delta}$, $p$ triangular solves for
+$\bG = \bF_{\delta\delta}^{-1}\bF_{\delta\gamma}$ at $O(\nu p)$
+leading-order fill-free work, the $p \times p$ solve, and one
+back-substitution.
+(iv) With $\bW = \bI_J$, $s_j = 1$ for all $j$, so
+$\bF_{\delta\delta} = \diag(M^{(0)})$ by (i), its inversion is $O(J)$,
+$\bG$ has rows $\mathbf{m}_j / M^{(0)}_j$, and
+$\bS = \bQ - \sum_j \mathbf{m}_j \mathbf{m}_j' / M^{(0)}_j$ assembles
+in $O(Jp^2)$---the profile Hessian of the supplement's concentrated
+Poisson likelihood, now for a general family.  Adding the $O(N(p^2+p+1))$
+microdata pass of Corollary~\ref{cor:complexity} gives the stated
+per-iteration total. \qed
 
 % =========================================================================
 \bibliographystyle{chicago}

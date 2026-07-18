@@ -23,6 +23,7 @@ for script in ["sim1_validation.py", "sim1b_baselines.py",
                "bench_baselines.py", "scaling.py", "stability.py",
                "sim2_convergence.py", "sim3_highdim.py",
                "sim4_separation.py", "sim5_logit_bias.py",
+               "sim6_sparse_cells.py",
                "app_register.py", "app_flights.py"]:
     print(f"\n===== {script} =====")
     t0 = time.perf_counter()

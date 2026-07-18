@@ -17,7 +17,7 @@ from fixed seeds.
 
 | File | Role |
 |---|---|
-| `tilted_glm.py` | Library: exponential-dispersion families (Poisson, logistic, gamma/log), tilted-moment Newton (`fit_tilted`, Theorem 1), dense baseline (`fit_full`), nonlinear Gauss–Seidel absorption (Algorithm 1), profile/conditional Poisson (`profile_poisson`, Lemma 1 / Theorem 7), weighted alternating projections with the Friedrichs-angle rate predictor (Theorem 3 / Corollary 2) and the G ≥ 3 exact spectral rate and product certificate (`gs_spectral_rate`, `friedrichs_product_bound`, Theorem 4), Firth's adjusted score inside the tilted pass (Proposition 4), OIM / robust / cluster variance estimators. |
+| `tilted_glm.py` | Library: exponential-dispersion families (Poisson, logistic, gamma/log), tilted-moment Newton (`fit_tilted`, Theorem 1), dense baseline (`fit_full`), nonlinear Gauss–Seidel absorption (Algorithm 1), profile/conditional Poisson (`profile_poisson`, Lemma 1 / Theorem 7), weighted alternating projections with the Friedrichs-angle rate predictor (Theorem 3 / Corollary 2) and the G ≥ 3 exact spectral rate and product certificate (`gs_spectral_rate`, `friedrichs_product_bound`, Theorem 4), Firth's adjusted score inside the tilted pass (Proposition 4), OIM / robust / cluster variance estimators, and the sparse cell algebra (`make_cell_dummies_sparse` + block-elimination Newton step through the Schur-complement profile Hessian) for sparse cell-level designs. |
 | `sim1_validation.py` | Study 1 (main §5.1): tilted vs dense Newton — iterate-level exactness and per-iteration cost, three families. |
 | `sim1b_baselines.py` | Study 1f (main §5.6): sensitivity to severe cell imbalance and rare events. |
 | `bench_baselines.py` | Studies 1b/1d (main §5.2–5.3): time + peak-memory benchmarks vs `statsmodels`, `glum`, a sparse-design IRLS, and (absorbed factors) `pyfixest`, with p-sweep; drives `_bench_worker.py`. |
@@ -28,6 +28,7 @@ from fixed seeds.
 | `sim3_highdim.py` | Proportional-regime study (supplement §S4): proportional regime $J/N \to c$ — bias, SE accuracy, coverage of profile-information and cell-clustered intervals; naive (effects-ignored) contrast. |
 | `sim4_separation.py` | Separation study (supplement §S4): quasi-separation frequency; MLE vs Firth-adjusted tilted iteration. |
 | `sim5_logit_bias.py` | Logit-bias study (supplement §S4): logit incidental-parameter bias at J/N = 1/m (profile MLE vs exact conditional logit). |
+| `sim6_sparse_cells.py` | Sparse cell algebra study (main, "Sparse cell-level designs"): saturated one-hot logistic cells, dense vs sparse cell algebra vs full-design Newton over J = k up to ~17,000 -- identical estimates, flat sparse per-iteration cost. |
 | `app_flights.py` | Main §6.1 application: on-time performance of `nycflights13` (327k flights, logistic, J=3,863 cells) verified against `statsmodels`; plus a high-dimensional block absorbing 3,692 aircraft, verified against `pyfixest` to 1e-9. Downloads `data/flights.csv` if absent. |
 | `app_register.py` | Main §6.2 application: 5M person-year episodes, 10,000 absorbed municipality–year effects, 96 demographic cells, cluster-robust SEs; dense cross-check on a subpopulation. |
 | `run_all.py` | Runs all of the above in order (~15–30 min single-core). |

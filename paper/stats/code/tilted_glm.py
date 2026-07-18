@@ -32,7 +32,15 @@ or non-canonical log-concave links:
   * Firth's bias-reducing adjusted score integrated into the tilted
                       accumulation (Supplement Proposition S2);
   * observed-information, HC1-robust, and cluster-robust covariance
-                      estimators computed cell-wise.
+                      estimators computed cell-wise;
+  * sparse cell algebra -- when the cell-level design W is sparse (one-hot
+                      cell dummies, additive factor blocks), pass W as a
+                      scipy.sparse matrix (`make_cell_dummies_sparse`): the
+                      delta blocks assemble at O(nnz(W)) and the Newton step
+                      is taken by block elimination through the p x p Schur
+                      complement (the profile Hessian), so the cell algebra
+                      runs at O(J p^2) in the saturated case instead of
+                      O(J k^2) + O((p+k)^3), with identical iterates.
 
 Only numpy (and scipy.linalg for symmetric solves) is required.  The code
 favours clarity over micro-optimisation; all cell accumulations use
@@ -44,6 +52,8 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass, field
 from scipy.linalg import cho_factor, cho_solve
+from scipy import sparse as sp
+from scipy.sparse.linalg import factorized as sp_factorized
 
 
 # ----------------------------------------------------------------------
@@ -294,6 +304,134 @@ def _assemble(R, M0, M1, Q, Ux, W):
 
 
 # ----------------------------------------------------------------------
+# Sparse cell algebra (Section "Sparse cell-level designs")
+# ----------------------------------------------------------------------
+#
+# When the cell-level design W is sparse -- one-hot cell dummies, additive
+# blocks of factor dummies, any design whose rows have s_j << k nonzeros --
+# the dense cell assembly F_dd = W' diag(M0) W at O(J k^2) and the dense
+# (p+k) solve at O((p+k)^3) squander the reorganization exactly where k is
+# largest.  The same blocks assemble at O(sum_j s_j^2) as sparse matrices,
+# and the Newton step follows by block elimination of the cell-level
+# coordinates: factor the sparse F_dd, form the p x p Schur complement
+#
+#     S = Q - F_gd F_dd^{-1} F_dg
+#
+# (the profile Hessian of the concentrated likelihood), solve for the
+# gamma step, and back-substitute for delta.  In the saturated one-hot
+# case W = I_J the assembly is O(J), F_dd = diag(M0), and S coincides with
+# the Schur-complement profile Hessian of `profile_poisson` -- the entire
+# cell algebra runs at O(J p^2), independent of k = J.
+
+
+def _assemble_sparse(R, M0, M1, Q, Ux, W):
+    """Sparse-W analogue of `_assemble`: the delta blocks are built at
+    O(nnz(W) * s_max) cost and kept sparse; instead of a dense (p+k)
+    system the pieces feed the block elimination of `_solve_blocks`."""
+    Ud = np.asarray(W.T @ R).ravel()
+    Hdd = sp.csc_matrix((W.multiply(M0[:, None])).T @ W)   # k x k, SPD
+    if M1.shape[1]:
+        Hgd = np.asarray(W.T @ M1).T                        # (p, k) dense
+    else:
+        Hgd = np.zeros((0, W.shape[1]))
+    return Ud, Hdd, Hgd
+
+
+def _solve_blocks(Q, Hgd, Hdd, Ux, Ud):
+    """Newton step by block elimination of the cell-level coordinates.
+
+    Returns (step_gamma, step_delta, S, G, solve_dd) with
+    S = Q - Hgd Hdd^{-1} Hgd' the Schur complement (profile Hessian) and
+    G = Hdd^{-1} Hgd' (k x p), both reused by the variance estimators.
+    """
+    try:
+        solve_dd = sp_factorized(Hdd)
+    except RuntimeError:
+        # singular F_dd (vanishing weights under separation): ridge the
+        # diagonal minimally so the iteration can proceed to its cap --
+        # the sparse counterpart of the dense pseudoinverse fallback
+        ridge = 1e-12 * Hdd.diagonal().max()
+        solve_dd = sp_factorized(sp.csc_matrix(
+            Hdd + ridge * sp.identity(Hdd.shape[0], format="csc")))
+    p = Q.shape[0]
+    if p:
+        G = np.column_stack([solve_dd(Hgd[l]) for l in range(p)])
+        S = Q - Hgd @ G
+        rhs_g = Ux - Hgd @ solve_dd(Ud)
+        step_g = np.linalg.solve(S, rhs_g)
+        step_d = solve_dd(Ud - Hgd.T @ step_g)
+    else:
+        G = np.zeros((Hdd.shape[0], 0))
+        S = Q
+        step_g = np.zeros(0)
+        step_d = solve_dd(Ud)
+    return step_g, step_d, S, G, solve_dd
+
+
+def _vce_sparse(y, eta, design, fam, S, G, Hdd, solve_dd, vce, cluster):
+    """Variance estimators for the sparse cell algebra.
+
+    gamma block: exact.  Under 'oim' it is the inverse Schur complement
+    S^{-1} (equal to the gamma block of the full H^{-1} by the partitioned
+    inverse); under 'robust'/'cluster' it is the sandwich built from the
+    concentrated (FWL-residualized) scores resid_i * (x_i - G' w_{j(i)}),
+    whose bread is S^{-1}.
+
+    delta standard errors are returned under 'oim' whenever they are cheap:
+    diag(H^{-1})_dd = diag(Hdd^{-1}) + rowsum((G S^{-1}) * G), with
+    diag(Hdd^{-1}) exact for diagonal Hdd (saturated one-hot cells) and
+    computed by dense inversion when k <= 4000; otherwise None.
+    """
+    p, k = design.p, design.k
+    try:
+        Sinv = np.linalg.inv(S) if p else np.zeros((0, 0))
+    except np.linalg.LinAlgError:
+        Sinv = np.linalg.pinv(S)
+
+    if vce == "oim":
+        V_gamma = Sinv
+    else:
+        if fam.canonical:
+            resid = y - fam.mean(eta)
+        else:
+            resid = fam.weight(eta) * fam.working_residual(y, eta)
+        # concentrated scores: x_i - G' w_{j(i)}, accumulated per cluster
+        WG = np.asarray(design.W @ G)                # (J, p)
+        Xt = design.X - WG[design.cells] if p else np.zeros((design.N, 0))
+        groups = np.arange(design.N) if vce == "robust" else np.asarray(cluster)
+        Gn = int(groups.max()) + 1
+        Sc = np.empty((Gn, p))
+        for l in range(p):
+            Sc[:, l] = np.bincount(groups, weights=resid * Xt[:, l],
+                                   minlength=Gn)
+        meat = Sc.T @ Sc
+        meat *= (design.N / (design.N - 1.0)) if vce == "robust" \
+            else (Gn / (Gn - 1.0))
+        V_gamma = Sinv @ meat @ Sinv
+
+    se_gamma = np.sqrt(np.diag(V_gamma)) if p else np.zeros(0)
+
+    se_delta = None
+    if vce == "oim":
+        offdiag = Hdd - sp.diags(Hdd.diagonal())
+        if offdiag.nnz == 0:
+            # saturated one-hot cells: F_dd is exactly diagonal; a zero
+            # entry (weight-free cell under separation) has no information
+            d = Hdd.diagonal()
+            diag_Hdd_inv = np.where(d > 0, 1.0 / np.where(d > 0, d, 1.0),
+                                    np.inf)
+        elif k <= 4000:
+            diag_Hdd_inv = np.diag(np.linalg.inv(Hdd.toarray()))
+        else:
+            diag_Hdd_inv = None
+        if diag_Hdd_inv is not None:
+            corr = np.einsum("kp,pq,kq->k", G, Sinv, G) if p else 0.0
+            se_delta = np.sqrt(diag_Hdd_inv + corr)
+
+    return V_gamma, se_gamma, se_delta
+
+
+# ----------------------------------------------------------------------
 # Absorbed factors: closed-form profile updates (Poisson) and
 # weighted-demeaning alternating projections (all families)
 # ----------------------------------------------------------------------
@@ -375,8 +513,12 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
     """
     fam = FAMILIES[family] if isinstance(family, str) else family
     absorb = absorb or []
+    is_sparse = sp.issparse(design.W)
     if absorb and firth:
         raise NotImplementedError("Firth with absorbed factors "
+                                  "not implemented")
+    if is_sparse and firth:
+        raise NotImplementedError("Firth with a sparse cell-level design "
                                   "not implemented")
     if absorb and not fam.canonical:
         raise NotImplementedError("absorption assumes a canonical link")
@@ -388,7 +530,9 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
     # crude but effective starting value: match the overall mean rate
     if k and fam.name == "poisson":
         mu0 = max(np.mean(y), 1e-8) / max(np.mean(np.exp(design.offset)), 1e-12)
-        if np.allclose(design.W[:, 0], 1.0):
+        w0 = np.asarray(design.W[:, 0].todense()).ravel() if is_sparse \
+            else design.W[:, 0]
+        if np.allclose(w0, 1.0):
             delta[0] = np.log(mu0)
 
     contrib = np.zeros(design.N)
@@ -403,6 +547,7 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
     trace = []
     converged = False
     H = None
+    S_blk = G_blk = Hdd = solve_dd = None
     for it in range(1, maxiter + 1):
         if firth:
             # evaluate the leverage adjustment at the current iterate: one
@@ -414,14 +559,20 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
         R, M0, M1, Q, Ux = _tilted_moments(y, eta, design, fam,
                                            firth=firth,
                                            Hinv_blocks=Hinv_blocks)
-        U, H = _assemble(R, M0, M1, Q, Ux, design.W)
-        try:
-            step = np.linalg.solve(H, U)
-        except np.linalg.LinAlgError:
-            # information singular (e.g. vanishing weights under
-            # separation): take the minimum-norm ascent direction and let
-            # the iteration run to the cap, flagging non-convergence
-            step = np.linalg.lstsq(H, U, rcond=None)[0]
+        if is_sparse:
+            Ud, Hdd, Hgd = _assemble_sparse(R, M0, M1, Q, Ux, design.W)
+            step_g, step_d, S_blk, G_blk, solve_dd = _solve_blocks(
+                Q, Hgd, Hdd, Ux, Ud)
+            step = np.concatenate([step_g, step_d])
+        else:
+            U, H = _assemble(R, M0, M1, Q, Ux, design.W)
+            try:
+                step = np.linalg.solve(H, U)
+            except np.linalg.LinAlgError:
+                # information singular (e.g. vanishing weights under
+                # separation): take the minimum-norm ascent direction and let
+                # the iteration run to the cap, flagging non-convergence
+                step = np.linalg.lstsq(H, U, rcond=None)[0]
         # Step-halving.  For the ordinary MLE we require (near-)ascent of
         # the log likelihood.  For Firth, the adjusted-score iteration is a
         # quasi-Fisher-scoring fixed point (Kosmidis & Firth 2010): the
@@ -470,7 +621,16 @@ def fit_tilted(y, design: CellDesign, family="poisson", absorb=None,
             converged = True
             break
 
-    V, se = _vce(y, eta, design, fam, H, vce, cluster)
+    if is_sparse and S_blk is not None:
+        # V is the exact gamma block (p x p); se covers gamma, and delta
+        # whenever diag(H^{-1})_dd is cheap (see _vce_sparse)
+        V, se_gamma, se_delta = _vce_sparse(y, eta, design, fam, S_blk,
+                                            G_blk, Hdd, solve_dd, vce,
+                                            cluster)
+        se = np.concatenate([se_gamma, se_delta]) \
+            if se_delta is not None else se_gamma
+    else:
+        V, se = _vce(y, eta, design, fam, H, vce, cluster)
     return FitResult(gamma=gamma, delta=delta, loglik=ll, iterations=it,
                      converged=converged, V=V, se=se, alpha=alphas,
                      trace=trace, H=H)
@@ -710,6 +870,23 @@ def make_cell_dummies(cells, J=None, drop_first=True, intercept=True):
     else:
         W = np.eye(J)
     return W
+
+
+def make_cell_dummies_sparse(cells, J=None, intercept=False):
+    """Sparse cell-level design (scipy.sparse.csr_matrix).
+
+    Saturated one-hot by default: W = I_J, one free effect per cell, so
+    F_dd is diagonal and the sparse cell algebra runs at O(J p^2).  With
+    `intercept=True`, intercept + J-1 reference-coded dummies (rows have
+    at most 2 nonzeros; F_dd is an arrowhead matrix, still O(J) sparse).
+    """
+    J = J or int(cells.max()) + 1
+    if not intercept:
+        return sp.identity(J, format="csr")
+    rows = np.concatenate([np.arange(J), np.arange(1, J)])
+    colsx = np.concatenate([np.zeros(J, dtype=int), np.arange(1, J)])
+    vals = np.ones(2 * J - 1)
+    return sp.csr_matrix((vals, (rows, colsx)), shape=(J, J))
 
 
 def flops_per_iteration(N, p, k):
