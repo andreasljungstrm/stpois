@@ -47,11 +47,14 @@ cross-file `\ref` is introduced.
 ## Repair Closure Matrix
 | Issue ID | Orig sev | Unit | Repair class | Patch ID | Touched units | Closure status | Post-repair status | Downstream affected |
 |----------|----------|------|--------------|----------|---------------|----------------|--------------------|--------------------|
-| I-01 | S2 | Prop 1(ii) | Replace-Technique | Patch 1 | Prop 1 stmt + App A proof | DESIGNED | (set by re-audit) | none |
-| I-02 | S3 | Thm 1(i) | Notation-Fix | Patch 2 | Thm 1 stmt | DESIGNED | (set by re-audit) | none |
-| I-03 | S3 | Prop 1(iii) | Notation-Fix | Patch 3 | Prop 1 stmt + App A proof | DESIGNED | (set by re-audit) | none |
-| I-04 | S3 | Thm S4 | Citation-Fix | Patch 4 | App S-B proof | DESIGNED | (set by re-audit) | none |
-| I-05 | S3 | Thm S1 | Fill-Skipped-Steps | Patch 5 | App S-A proof | DESIGNED | (set by re-audit) | none |
+| I-01 | S2 | Prop 1(ii) | Replace-Technique | Patch 1 | Prop 1 stmt + App A proof | APPLIED | CLOSED-VERIFIED | none |
+| I-02 | S3 | Thm 1(i) | Notation-Fix | Patch 2 | Thm 1 stmt | APPLIED | CLOSED-VERIFIED | none |
+| I-03 | S3 | Prop 1(iii) | Notation-Fix | Patch 3 | Prop 1 stmt + App A proof | APPLIED | CLOSED-VERIFIED | none |
+| I-04 | S3 | Thm S4 | Citation-Fix | Patch 4 | App S-B proof | APPLIED | CLOSED-VERIFIED | none |
+| I-05 | S3 | Thm S1 | Fill-Skipped-Steps | Patch 5 | App S-A proof | APPLIED | CLOSED-VERIFIED | none |
+
+*(Patches applied to `main.tex`/`supplement.tex` on 2026-07-18; both compile cleanly. Patch 4
+names the actual Fahrmeir–Kaufmann conditions rather than illustrative labels, resolving N-01.)*
 
 ## Weaken-Claim Change Log
 None — no repair weakens any claim. (I-01 preserves the claim; it repairs the argument.)

@@ -424,13 +424,19 @@ set determines $G_j$ on an open set, hence---by real-analyticity in $s$
 and the boundary expansion
 $e^{-s} G_j(s, \bgamma) \to \mathcal{L}_{\nu_j}(\bgamma)$ as
 $s \to -\infty$---determines the Laplace transform of $\nu_j$, and
-therefore $\nu_j$ itself.  The support size of $\nu_j$, and with it the
-dimension of any such statistic, grows with the number of distinct
-covariate values in the cell: no fixed-dimensional cell summary can
-support the likelihood function.
+therefore $\nu_j$ itself.  In the cell-saturated parametrization---each
+cell carrying its own free effect, as the collapse device supplies by
+construction---the support size of $\nu_j$, and with it the dimension of
+any such statistic, grows with the number of distinct covariate values
+in the cell: no fixed-dimensional cell summary can support the
+likelihood function.
 (iii) By strict convexity of the exponential (Jensen),
 $\mathcal{L}_{\nu_j}(\bgamma) \ge \nu_j(\R^p)\,
-e^{\bgamma' \bar\bx_j}$ with equality along a direction of $\bgamma$
+e^{\bgamma' \bar\bx_j^{\nu}}$, where $\bar\bx_j^{\nu} =
+\nu_j(\R^p)^{-1}\!\int \bx\,\nu_j(\dd\bx)$ is the $\nu_j$-weighted cell
+mean (coinciding with the plain cell mean of part~(i) only when the
+offsets are constant within the cell), with equality along a direction
+of $\bgamma$
 only if $\bgamma'\bx$ is $\nu_j$-a.s.\ constant along it: replacing
 microdata by cell means strictly understates the within-cell mass of
 the cumulant term and is not a reparametrization of the same
@@ -512,7 +518,8 @@ every $\btheta \in \R^q$:
   = B_j\, \E_{P^{b'}_{j,\btheta}}[\bx],
 \]
 where $P^{b'}_{j,\btheta}$ is the tilt of Definition~\ref{def:tilt} with
-$b'$ in place of $b''$.
+$b'$ in place of $b''$ (well defined as a probability measure because
+$b' = \mu > 0$ on the fitted range for the families in scope).
 \item[(ii)] The information matrix is
 \[
 \phi\, \bF(\btheta) =
@@ -1433,13 +1440,18 @@ G_j(s, \bgamma) = \sum_{i \in j} b(s + \bgamma'\bx_i + o_i),
 \]
 which establishes computability from $\{S_j, D_j, G_j\}$.  Conversely,
 suppose a statistic permits evaluation of $\ell$ on an open set
-$\mathcal{O} \ni (\bgamma_0, \bdelta_0)$.  Provided the map $j \mapsto
-\bw_j$ is injective (cells are distinct covariate combinations) and
-$\bdelta \mapsto (s_1, \dots, s_J)$ has open range on $\mathcal{O}$'s
-$\bdelta$-slice---as holds whenever the $\bw_j$ are affinely
-independent, and in general after passing to the identified
-subfamily---one recovers each $G_j(\cdot, \bgamma)$ on an open interval
-of $s$ for each $\bgamma$ in the slice.  Each $G_j(\cdot, \bgamma)$ is a
+$\mathcal{O} \ni (\bgamma_0, \bdelta_0)$.  Work in the cell-saturated
+parametrization, in which each cell $j$ carries a free scalar level
+$s_j$ (the categorical cross-classification that defines the cells
+supplies one effect per cell; a coarser cell-level design is a submodel
+of this one).  Then $(s_1, \dots, s_J)$ ranges over an open box
+$\prod_j I_j \subset \R^J$ as the cell-level parameters vary, and
+$\bgamma$ ranges over an open $\bgamma$-slice.  Holding $\bgamma$ fixed
+and differencing $\ell$ in the single coordinate $s_j$ isolates
+$\partial\ell/\partial s_j = D_j - \partial_s G_j(s_j, \bgamma)$;
+integrating in $s_j$ over $I_j$ recovers $G_j(\cdot, \bgamma)$, up to the
+known additive $D_j$ term, on the open interval $I_j$, for each
+$\bgamma$ in the slice.  Each $G_j(\cdot, \bgamma)$ is a
 finite sum of translates of the real-analytic $b$, hence real-analytic
 on $\R$; knowledge on an open interval therefore determines it on the
 whole line by analytic continuation.  The boundary hypothesis
@@ -1464,7 +1476,7 @@ size.
 (iii) Jensen's inequality applied to the strictly convex map
 $z \mapsto e^z$ under the probability measure $\nu_j / \nu_j(\R^p)$
 gives $\nu_j(\R^p)^{-1}\mathcal{L}_{\nu_j}(\bgamma) \ge
-\exp(\bgamma' \bar\bx_j)$ with equality iff $\bgamma'\bx$ is
+\exp(\bgamma' \bar\bx_j^{\nu})$ with equality iff $\bgamma'\bx$ is
 $\nu_j$-a.s.\ constant. \qed
 
 \subsection{Proof of Theorem~\ref{thm:tilted}}

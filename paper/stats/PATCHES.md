@@ -1,5 +1,11 @@
 # LaTeX Patches — Apply in Order
 
+> **STATUS: APPLIED 2026-07-18.** All five patches are now in `main.tex` / `supplement.tex`;
+> both documents rebuild cleanly with `make all` (no errors, no undefined references). Patch 4
+> was applied *without* the illustrative "(N1)–(N3)" condition labels — it names the actual
+> conditions ($\lambda_{\min}(\bF_N)\to\infty$; normalized-information convergence) instead,
+> which also resolves re-audit nit **N-01**.
+
 ## Reference Mode
 - Mode: **B — two-file** (`main.tex` + `supplement.tex`).
 - Supplement numbering: S1, S2, S3, … (S-prefixed counters).

@@ -1169,7 +1169,14 @@ because the argument used only: exactness/uniqueness of the absorbed
 block maximizations, sufficient ascent of the $\bbeta$-step, and
 vanishing per-block increments---all invariant to replacing the
 $\bbeta$-step by exact maximization and to essentially-cyclic orderings
-(every block updated at least once every $B$ iterations).
+(every block updated at least once every $B$ iterations).  In
+particular, running the inner $\balpha$-loop to tolerance before each
+outer $\bbeta$-step (as Algorithm~\ref{alg:absorb} does) is an instance
+of an essentially-cyclic ordering: each $\balpha$-block is updated at
+least once, and the $\bbeta$-block exactly once, per outer cycle, so the
+vanishing-per-block-increment argument applies verbatim with $B$ equal
+to the (finite, since the inner loop converges $R$-linearly by
+Theorem~\ref{thm:rate}(i)) inner-loop length.
 
 For part (iv), inspect where Assumption~\ref{ass:canonical} entered:
 (a) concavity of $\ell$ on $\R^D$ and strict concavity on $E$ used only
@@ -1354,10 +1361,16 @@ single factor, $(1 - (1 - c_F^2))^{1/2} = c_F$. \qed
 
 \subsection{Proof of Theorem~\ref{thm:classical}}
 
-Under Assumption~\ref{ass:classical}, the normalizing regularity and
-divergence conditions of \citet[Sec.~3]{fahrmeir1985} hold
-for the canonical-link exponential family with bounded covariates:
-their normed information $\bF_N^{-1/2}$ exists for large $N$, and
+Under Assumption~\ref{ass:classical}, the divergence and normalization
+conditions of \citet[Sec.~3]{fahrmeir1985} hold for the canonical-link
+exponential family with bounded covariates---namely
+$\lambda_{\min}(\bF_N) \to \infty$ and
+$\bF_N^{-1/2}\bF_N(\btheta)\bF_N^{-1/2} \to \bI$ uniformly on shrinking
+$\bF_N$-neighborhoods of $\btheta_0$, which follow from
+Assumption~\ref{ass:classical}(i)--(ii) (bounded covariates with
+$b \in C^3$ give the uniform third-derivative control, and
+$N^{-1}\bF_N \to \bF_\infty \succ \bzero$ gives the normalization).
+Their normed information $\bF_N^{-1/2}$ exists for large $N$, and
 their Theorems~1--2 give existence, consistency, and
 $\bF_N^{1/2}(\hat\btheta_N - \btheta_0) \convd \mathcal{N}(\bzero,
 \phi \bI)$; Assumption~\ref{ass:classical}(ii) converts this to the
