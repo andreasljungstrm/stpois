@@ -1,0 +1,209 @@
+{
+  "provenance": {
+    "script_version": "1.0.0",
+    "rules_version": "1.0.0",
+    "rules_digest": "aded664a1907b349",
+    "reference_mode": "two-file",
+    "supplement_mode": "separate-self-contained",
+    "main": "/home/user/stpois/paper/stats/main.tex",
+    "supplement": "/home/user/stpois/paper/stats/supplement.tex"
+  },
+  "reference_mode": "two-file",
+  "inventory": [
+    {
+      "env_type": "proposition",
+      "label": "prop:sufficiency",
+      "line": 406,
+      "summary": "[Failure of fixed collapse] Let the cumulant $b$ be real-analytic on $\\R$ with $",
+      "depends_on": []
+    },
+    {
+      "env_type": "definition",
+      "label": "def:tilt",
+      "line": 460,
+      "summary": "[Tilted within-cell measures] Fix $\\btheta = (\\bgamma, \\bdelta)$ and let $\\omega",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:tilted",
+      "line": 499,
+      "summary": "[Exact tilted-moment representation] For the model \\eqref{eq:edf}--\\eqref{eq:lin",
+      "depends_on": []
+    },
+    {
+      "env_type": "corollary",
+      "label": "cor:complexity",
+      "line": 573,
+      "summary": "[Scaling] One Newton iteration computed via Theorem~\\ref{thm:tilted} costs \\[ \\u",
+      "depends_on": []
+    },
+    {
+      "env_type": "proposition",
+      "label": "prop:noncanonical",
+      "line": 625,
+      "summary": "[Tilted Fisher scoring] With $\\omega_i$ and $r_i$ as in \\eqref{eq:fisher-weight}",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:global-main",
+      "line": 864,
+      "summary": "[Global convergence of the absorbed-factor iteration] Suppose the link is canoni",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:canonical",
+      "line": 219,
+      "summary": "The link is canonical and $b$ is strictly convex and twice continuously differen",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:mle-exists",
+      "line": 224,
+      "summary": "The MLE exists: $\\sup_{\\btheta} \\ell$ is attained at some $\\btheta^\\ast$ (unique",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:blocks",
+      "line": 229,
+      "summary": "(i) Each absorbed group contains at least one observation with $y_i$ in the inte",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:global",
+      "line": 247,
+      "summary": "[Global convergence of nonlinear alternating projections; main-paper Theorem~2] ",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:rate",
+      "line": 332,
+      "summary": "[Local linear convergence] Let Assumptions~\\ref{ass:canonical}--\\ref{ass:blocks}",
+      "depends_on": []
+    },
+    {
+      "env_type": "corollary",
+      "label": "cor:bipartite",
+      "line": 360,
+      "summary": "[Bipartite spectral gap] For $G = 2$, define the weighted biadjacency matrix $\\b",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:multiG",
+      "line": 406,
+      "summary": "[Exact rate and certificates for $G \\ge 2$ factors] Let the assumptions of Theor",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:classical",
+      "line": 511,
+      "summary": "(i) $q = p + k$ is fixed; covariates and offsets are uniformly bounded; (ii) $\\l",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:classical",
+      "line": 519,
+      "summary": "[Classical asymptotics] Under Assumptions~\\ref{ass:canonical} and \\ref{ass:class",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:diverging",
+      "line": 547,
+      "summary": "(i) Covariates and offsets are uniformly bounded, and the true linear predictors",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:diverging",
+      "line": 562,
+      "summary": "[Diverging dimension] Under Assumptions~\\ref{ass:canonical} and \\ref{ass:divergi",
+      "depends_on": []
+    },
+    {
+      "env_type": "lemma",
+      "label": "lem:conditional",
+      "line": 610,
+      "summary": "[Profile equals conditional] For every $\\bgamma$ with all $D_j$-positive cells, ",
+      "depends_on": []
+    },
+    {
+      "env_type": "assumption",
+      "label": "ass:proportional",
+      "line": 647,
+      "summary": "(i) Cell sizes satisfy $2 \\le m_j \\le \\bar m$; $J/N \\to c \\in (0, 1)$; (ii) cova",
+      "depends_on": []
+    },
+    {
+      "env_type": "theorem",
+      "label": "thm:proportional",
+      "line": 656,
+      "summary": "[Proportional regime] Under Assumption~\\ref{ass:proportional}: (i) the profile M",
+      "depends_on": []
+    },
+    {
+      "env_type": "proposition",
+      "label": "prop:penalized",
+      "line": 766,
+      "summary": "[Penalized tilted-moment proximal Newton] At each outer iteration, form the quad",
+      "depends_on": []
+    },
+    {
+      "env_type": "proposition",
+      "label": "prop:firth",
+      "line": 800,
+      "summary": "[Tilted Firth] Given the partitioned inverse of $\\bF$ (available from the Newton",
+      "depends_on": []
+    },
+    {
+      "env_type": "lemma",
+      "label": "lem:levelsets",
+      "line": 1090,
+      "summary": "[Compact superlevel sets] Let $f : \\R^d \\to \\R$ be strictly concave, continuous,",
+      "depends_on": []
+    }
+  ],
+  "topological_layers": [
+    [
+      "ass:blocks",
+      "ass:canonical",
+      "ass:classical",
+      "ass:diverging",
+      "ass:mle-exists",
+      "ass:proportional",
+      "cor:bipartite",
+      "cor:complexity",
+      "def:tilt",
+      "lem:conditional",
+      "lem:levelsets",
+      "prop:firth",
+      "prop:noncanonical",
+      "prop:penalized",
+      "prop:sufficiency",
+      "thm:classical",
+      "thm:diverging",
+      "thm:global",
+      "thm:global-main",
+      "thm:multiG",
+      "thm:proportional",
+      "thm:rate",
+      "thm:tilted"
+    ]
+  ],
+  "findings": [],
+  "summary": {
+    "PASS": 0,
+    "FAIL": 0,
+    "WARN": 0,
+    "INFO": 0
+  }
+}
