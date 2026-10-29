@@ -1,0 +1,13 @@
+# Stata
+*.log
+*.smcl
+*.dta
+*.gph
+*.stpr
+*.stsem
+
+# macOS
+.DS_Store
+
+# Paper (not tracked)
+paper/

@@ -1,0 +1,122 @@
+# stpois
+
+**Poisson event-history regression for `stset` data in Stata**
+
+`stpois` fits Poisson event-history (exponential hazard) models directly on `stset` survival data, using the event indicator `_d` as outcome and time at risk `_t - _t0` as exposure. It reproduces `streg, distribution(exponential)` exactly on the default path, and adds two things that command does not have — with **no approximations anywhere**: every path returns the exact MLE with exact OIM/robust/cluster standard errors.
+
+1. **High-dimensional fixed effects** — `absorb(terms)` absorbs one or more sets of fixed effects (including interactions such as `absorb(region#period)`) via iteratively reweighted alternating projections (the `ppmlhdfe` approach), implemented in pure Mata with no dependencies. Each demeaning pass is a single O(n) sweep using precomputed sort permutations and group boundaries, independent of the number of levels. Coefficients and standard errors are numerically exact relative to the equivalent dummy-variable model: at 1M observations with a 1,000-level fixed effect, `absorb()` takes ~3s where explicit dummies take ~33s.
+2. **Fast exact estimation on collapsed cells** — `fast` fits the exact individual-level MLE by Newton iterations on exponentially tilted within-cell moments: one O(n·p²) microdata pass per iteration (p = number of individual-level columns), all remaining algebra at the cell level. When every predictor is categorical, iterations run entirely on the collapsed (events, exposure) cell sums. Group structures come from a single sort with running-sum segment aggregation — no data copies, no collapse round-trips.
+
+Factor-variable interactions are supported on all paths: continuous#continuous, continuous#categorical, categorical#categorical, and interacted fixed effects in `absorb()`.
+
+## Installation
+
+From Stata (requires Stata 14 or later):
+
+```stata
+net install stpois, from("https://raw.githubusercontent.com/andreasljungstrm/stpois/main/")
+```
+
+Or clone this repository and add it to your adopath:
+
+```stata
+adopath ++ "path/to/stpois"
+```
+
+### On MONA (Statistics Sweden)
+
+MONA has no internet access, so `net install` from GitHub does not work there. `stpois` is pure Stata/Mata with no dependencies, so installing it only means copying seven files into MONA:
+
+1. Outside MONA, download the repository (on GitHub: **Code → Download ZIP**) and unzip it.
+2. Upload these files with MONA's file transfer service to a folder in your project, for example `\\micro.intra\projekt\P0000$\P0000_Gem\ado\stpois\`:
+   `stpois.ado`, `stpois_p.ado`, `_stpois_hdfe.ado`, `_stpois_fast.ado`, `stpois.sthlp`, `stpois.pkg`, `stata.toc`
+3. In Stata on MONA, install from that folder:
+
+   ```stata
+   net install stpois, from("\\micro.intra\projekt\P0000$\P0000_Gem\ado\stpois") replace
+   ```
+
+   If you cannot write to your PLUS directory, add the folder to the adopath instead (put the line in your `profile.do` to make it permanent):
+
+   ```stata
+   adopath ++ "\\micro.intra\projekt\P0000$\P0000_Gem\ado\stpois"
+   ```
+
+Replace `P0000` with your project number. Uploading to a shared project folder (`_Gem`) lets everyone in the project use the same version.
+
+## Quick start
+
+```stata
+webuse stan3, clear
+stset t1, failure(died) id(id)
+
+* Standard exponential-hazard Poisson (matches streg, dist(exponential))
+stpois age posttran, irr
+
+* Absorb fixed effects (exact coefficients and SEs)
+stpois age posttran, absorb(surgery) vce(robust)
+
+* Fast exact estimation on collapsed cells
+* bare names = continuous, i. terms = categorical (define the cells)
+stpois age i.surgery, fast
+
+* Interactions work on every path
+stpois c.age##i.posttran i.surgery, fast
+stpois age, absorb(posttran#surgery)
+
+* Combine fast and absorb(); weights work on every path
+stpois age i.posttran, fast absorb(surgery)
+stpois age posttran [pw=w], absorb(surgery)
+
+* Predictions after absorb() include the absorbed effects
+stpois age posttran, absorb(surgery)
+predict double haz, hazard
+```
+
+See `help stpois` after installation for full syntax and the mathematical basis of the methods.
+
+## Syntax
+
+```stata
+stpois varlist [if] [in] [weight] [, irr nolog level(#) noconstant
+       vce(vcetype) robust cluster(varname)
+       absorb(terms) tolerance(#) maxiter(#)
+       fast ]
+```
+
+- `fast` and `absorb()` may be combined: the absorbed fixed effects are concentrated out of the cell-accelerated likelihood by closed-form Gauss–Seidel updates (the `fixest` approach), with the profile-Newton step and VCE built on FWL-demeaned design columns.
+- Weights (`fweight`, `iweight`, `pweight`) are supported on all paths; `pweight`s imply robust standard errors. Weighted results match weighted `poisson` exactly.
+- After `absorb()`, the total fixed-effect contribution is stored in `_stpois_fe` (or the variable named in `d()`), and `predict` uses it, so `xb`, `n`, `hazard`, and `survival` include the absorbed effects.
+- With `fast`, terms built only from factor-variable pieces enter at the cell level (and define the cells); terms involving a continuous piece enter at the individual level. At least one categorical term is required.
+- `absorb()` accepts variable names and `var1#var2` interactions.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `stpois.ado` | Main command: parsing, dispatch, ereturn, display |
+| `stpois_p.ado` | `predict` after `stpois` (xb, n, hazard, survival) |
+| `_stpois_hdfe.ado` | IRLS + alternating-projections FE absorption (Mata) |
+| `_stpois_fast.ado` | Cell-accelerated exact MLE (Mata Newton) |
+| `stpois.sthlp` | Stata help file |
+| `stpois.pkg`, `stata.toc` | `net install` metadata |
+| `tests/` | Validation suite (run from repo root) |
+
+## Testing
+
+From the repository root, in Stata:
+
+```stata
+do tests/test_stpois.do
+do tests/test_fast_exact.do
+```
+
+The suite checks, to 1e-6, that (i) the standard path matches `streg, distribution(exponential)`; (ii) `absorb()` matches explicit dummy-variable Poisson on coefficients *and* standard errors (OIM, robust, and clustered) for single, interacted, and multiple fixed-effect terms, with the Wald model test matching the joint test on the dummy-variable model and header statistics computed after separation drops; (iii) `fast` matches the full MLE on coefficients, standard errors (OIM, robust, clustered), and log likelihood, for all interaction types, for all-categorical models, and for a continuous covariate with zero between-cell variation; (iv) weighted estimation (fw/iw/pw) matches weighted `poisson` exactly on `fast` and `absorb()`; (v) `fast absorb()` combined matches dummy-variable `poisson`, including multi-term absorbs, clustered SEs, and weights; and (vi) `predict` after `absorb()` reproduces the dummy-variable `poisson` predictions.
+
+## AI Declaration
+
+A large part of the coding behind this package was produced using Claude. Its contribution include coding, debugging, documentation and developing the tilted-moments framework for the `fast` analysis. All errors remain my responsibility.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

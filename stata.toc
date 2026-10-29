@@ -1,0 +1,4 @@
+v 3
+d stpois: Poisson event-history regression for stset data
+d Andreas Ljungström, SOFI Stockholm University
+p stpois
